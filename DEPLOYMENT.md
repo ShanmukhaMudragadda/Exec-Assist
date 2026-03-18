@@ -1,8 +1,8 @@
 # Deployment Guide
 
 **Local machine:** Windows
-**Server:** Rocky Linux at `172.16.138.14` (uses Podman instead of Docker)
-**Workflow:** Build Docker images on Windows → push to Docker Hub → pull and run on server via podman-compose
+**Server:** Rocky Linux at `172.16.138.14` (root user, Docker CE)
+**Workflow:** Build Docker images on Windows → push to Docker Hub → pull and run on server via docker compose
 
 ---
 
@@ -35,25 +35,34 @@ exec_web  exec_backend  exec_mobile_web
 
 ## One-Time Server Setup
 
-### SSH into the server
+### SSH into the server as root
 
 ```bash
-ssh shanmukh@172.16.138.14
+ssh root@172.16.138.14
 ```
 
-### Verify podman-compose is installed
+### Install Docker CE
 
 ```bash
-podman-compose version
+# Remove podman if present
+dnf remove -y podman podman-compose buildah
+
+# Add Docker repo
+dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+
+# Install Docker
+dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# Start and enable Docker
+systemctl start docker
+systemctl enable docker
+
+# Verify
+docker --version
+docker compose version
 ```
 
-If not installed:
-```bash
-sudo dnf install -y python3-pip
-sudo pip3 install podman-compose
-```
-
-### Create project folders
+### Create project folder
 
 ```bash
 mkdir -p ~/executive-management/nginx
@@ -62,22 +71,27 @@ cd ~/executive-management
 
 ### Open firewall ports
 
-The server uses `iptables` directly (FirewallD is not running):
-
 ```bash
-sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
-sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+# If firewalld is running
+firewall-cmd --permanent --add-port=80/tcp
+firewall-cmd --permanent --add-port=8080/tcp
+firewall-cmd --permanent --add-port=3000/tcp
+firewall-cmd --reload
 
-# Save rules so they persist after reboot
-sudo dnf install -y iptables-services
-sudo service iptables save
-sudo systemctl enable iptables
+# Verify
+firewall-cmd --list-ports
 ```
 
-Verify ports are open:
+If firewalld is not running, use iptables:
 ```bash
-sudo iptables -L INPUT -n | grep -E "80|8080|3000"
+iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
+iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+
+# Save rules
+dnf install -y iptables-services
+service iptables save
+systemctl enable iptables
 ```
 
 ---
@@ -96,9 +110,7 @@ sudo iptables -L INPUT -n | grep -E "80|8080|3000"
 
 ## Configuration Files
 
-### `.env` (project root)
-
-The `.env` file at `C:\Users\shanmukha.mudragadda\Desktop\Executive-Management\.env` should contain:
+### `.env` (project root — Windows)
 
 ```env
 # Docker Hub
@@ -122,7 +134,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=noreply@forsysinc.com
 SMTP_PASSWORD=your_app_password
-SMTP_FROM=TaskZilla <noreply@forsysinc.com>
+SMTP_FROM=EAssist <noreply@forsysinc.com>
 
 # URLs — for server deployment
 FRONTEND_URL=http://172.16.138.14,http://172.16.138.14:8080
@@ -185,6 +197,19 @@ http {
 }
 ```
 
+### `deploy.sh`
+
+```bash
+#!/bin/bash
+set -e
+echo "==> Pulling latest images..."
+docker compose -f docker-compose.prod.yml pull
+echo "==> Restarting services..."
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
+echo "==> Done!"
+docker compose -f docker-compose.prod.yml ps
+```
+
 ---
 
 ## Every Deploy — Step by Step
@@ -194,15 +219,17 @@ http {
 ```powershell
 cd C:\Users\shanmukha.mudragadda\Desktop\Executive-Management
 
-# Backend
+# Backend (only if backend code changed)
 docker build -t shanmukhamudragadda/exec-backend:latest ./apps/backend
 
-# Web app
+# Web app (only if web code changed)
 docker build --build-arg VITE_API_URL=http://172.16.138.14:3000 -t shanmukhamudragadda/exec-web:latest ./apps/web
 
-# Mobile web
+# Mobile web (only if mobile code changed)
 docker build --build-arg EXPO_PUBLIC_API_URL=http://172.16.138.14:3000 -t shanmukhamudragadda/exec-mobile-web:latest -f ./apps/mobile/Dockerfile.web ./apps/mobile
 ```
+
+> Only rebuild the services whose code changed to save time.
 
 ### Step 2 — Push images to Docker Hub
 
@@ -212,22 +239,19 @@ docker push shanmukhamudragadda/exec-web:latest
 docker push shanmukhamudragadda/exec-mobile-web:latest
 ```
 
-### Step 3 — Copy config files to server
+### Step 3 — Copy config files to server (first deploy or when configs change)
 
 ```powershell
-scp C:\Users\shanmukha.mudragadda\Desktop\Executive-Management\docker-compose.prod.yml shanmukh@172.16.138.14:~/executive-management/
-
-scp C:\Users\shanmukha.mudragadda\Desktop\Executive-Management\deploy.sh shanmukh@172.16.138.14:~/executive-management/
-
-scp C:\Users\shanmukha.mudragadda\Desktop\Executive-Management\.env shanmukh@172.16.138.14:~/executive-management/
-
-scp C:\Users\shanmukha.mudragadda\Desktop\Executive-Management\nginx\nginx.conf shanmukh@172.16.138.14:~/executive-management/nginx/
+scp docker-compose.prod.yml root@172.16.138.14:~/executive-management/
+scp deploy.sh root@172.16.138.14:~/executive-management/
+scp .env root@172.16.138.14:~/executive-management/
+scp nginx/nginx.conf root@172.16.138.14:~/executive-management/nginx/
 ```
 
 ### Step 4 — Deploy on server
 
 ```bash
-ssh shanmukh@172.16.138.14
+ssh root@172.16.138.14
 cd ~/executive-management
 chmod +x deploy.sh
 ./deploy.sh
@@ -236,7 +260,7 @@ chmod +x deploy.sh
 ### Step 5 — Run migrations (first deploy only)
 
 ```bash
-podman-compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
 ```
 
 ---
@@ -244,7 +268,7 @@ podman-compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
 ## Verify Deployment
 
 ```bash
-podman-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 ```
 
 All 5 containers should show `Up`:
@@ -258,21 +282,19 @@ Open in browser:
 
 | URL | Expected |
 |---|---|
-| `http://172.16.138.14` | React web app login page |
+| `http://172.16.138.14` | EAssist web app login page |
 | `http://172.16.138.14:8080` | Mobile app in browser |
 | `http://172.16.138.14:3000/health` | `{"status":"ok"}` |
 
 ---
 
-## Future Deploys
+## Future Deploys (routine code changes)
 
-Whenever you make code changes:
+1. Build only the changed service images (Step 1)
+2. Push to Docker Hub (Step 2)
+3. SSH into server and run `./deploy.sh` (Step 4)
 
-1. Build and push updated images from Windows (Step 1 & 2 above — only rebuild changed services)
-2. Copy any updated config files if changed (Step 3)
-3. SSH into server and run `./deploy.sh`
-
-Migrations run automatically on every deploy via `deploy.sh`.
+> Config files (Step 3) only need to be copied when `.env`, `nginx.conf`, `docker-compose.prod.yml`, or `deploy.sh` change.
 
 ---
 
@@ -280,31 +302,34 @@ Migrations run automatically on every deploy via `deploy.sh`.
 
 ```bash
 # Check container status
-podman-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # Follow all logs
-podman-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Follow logs for one service
-podman-compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml logs -f backend
 
 # Restart one service
-podman-compose -f docker-compose.prod.yml restart backend
+docker compose -f docker-compose.prod.yml restart backend
 
 # Open a shell in the backend container
-podman-compose -f docker-compose.prod.yml exec backend sh
+docker compose -f docker-compose.prod.yml exec backend sh
 
 # Open PostgreSQL shell
-podman-compose -f docker-compose.prod.yml exec postgres psql -U postgres -d executive_management
+docker compose -f docker-compose.prod.yml exec postgres psql -U postgres -d executive_management
 
 # Run migrations manually
-podman-compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
 
 # Stop everything (keeps data)
-podman-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Stop and delete all data (irreversible!)
-podman-compose -f docker-compose.prod.yml down -v
+docker compose -f docker-compose.prod.yml down -v
+
+# Remove unused images to free disk space
+docker image prune -a
 ```
 
 ---
@@ -313,30 +338,29 @@ podman-compose -f docker-compose.prod.yml down -v
 
 **Container keeps restarting:**
 ```bash
-podman-compose -f docker-compose.prod.yml logs backend
+docker compose -f docker-compose.prod.yml logs backend
 ```
 
 **Cannot connect to database:**
 ```bash
-podman-compose -f docker-compose.prod.yml ps postgres
+docker compose -f docker-compose.prod.yml ps postgres
 # Must show: healthy
 ```
 
 **Port already in use:**
 ```bash
-sudo ss -tlnp | grep -E "80|8080|3000"
+ss -tlnp | grep -E "80|8080|3000"
 ```
 
-**Podman asks to select image registry:**
-Make sure all images in `docker-compose.prod.yml` have `docker.io/` prefix:
-```yaml
-image: docker.io/shanmukhamudragadda/exec-backend:latest
-```
-
-**Port 80 blocked (Podman rootless):**
+**New code changes not showing after deploy:**
 ```bash
-sudo sysctl net.ipv4.ip_unprivileged_port_start=80
+# Force remove cached images and re-pull
+docker compose -f docker-compose.prod.yml down
+docker rmi shanmukhamudragadda/exec-web:latest
+docker rmi shanmukhamudragadda/exec-mobile-web:latest
+docker compose -f docker-compose.prod.yml up -d
 ```
+Then hard-refresh browser with `Ctrl+Shift+R`.
 
 **CORS errors after deployment:**
 Make sure `FRONTEND_URL` in `.env` includes both frontend URLs separated by comma:
@@ -346,11 +370,11 @@ FRONTEND_URL=http://172.16.138.14,http://172.16.138.14:8080
 
 **SELinux blocking container networking:**
 ```bash
-sudo setsebool -P httpd_can_network_connect 1
-sudo setsebool -P httpd_can_network_relay 1
+setsebool -P httpd_can_network_connect 1
+setsebool -P httpd_can_network_relay 1
 ```
 
 **Out of disk space:**
 ```bash
-podman system prune -a
+docker system prune -a
 ```

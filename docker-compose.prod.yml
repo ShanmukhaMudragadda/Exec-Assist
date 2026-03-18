@@ -67,12 +67,11 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "8080:8080"
-      - "3000:3000"
       - "443:443"
+      - "3000:3000"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - nginx_certs:/etc/nginx/certs
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - backend
       - web
@@ -81,4 +80,3 @@ services:
 volumes:
   postgres_data:
   uploads_data:
-  nginx_certs:
