@@ -1,0 +1,152 @@
+// prisma/schema.prisma
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String
+  password           String
+  avatar             String?
+  role               String    @default("user")
+  emailVerified      Boolean   @default(false)
+  emailVerifyToken   String?
+  resetPasswordToken String?
+  resetPasswordExpiry DateTime?
+  emailNotifications Boolean   @default(true)
+  dailyReportTime    String?   @default("09:00")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+  createdTasks     Task[]
+  taskAssignees    TaskAssignee[]
+  taskUpdates      TaskUpdate[]
+  invitations      WorkspaceInvitation[]
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members       WorkspaceMember[]
+  tasks         Task[]
+  invitations   WorkspaceInvitation[]
+  transcripts   Transcript[]
+  emailSettings WorkspaceEmailSettings?
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        String   @default("member")
+  profile     String?   // Sales | Engineering | Pre-Sales | Delivery | Product
+  joinedAt    DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model WorkspaceInvitation {
+  id          String   @id @default(cuid())
+  email       String
+  workspaceId String
+  invitedBy   String
+  status      String   @default("pending")
+  profile     String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inviter   User      @relation(fields: [invitedBy], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  workspaceId String
+  createdBy   String
+  category    String?
+  tags        String[]  @default([])
+  status      String    @default("todo")
+  priority    String    @default("medium")
+  dueDate     DateTime?
+  attachments String[]  @default([])
+  sourceType  String?
+  sourceId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator   User         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  assignees TaskAssignee[]
+  updates   TaskUpdate[]
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model TaskUpdate {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String
+  files     String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transcript {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  content     String
+  type        String
+  sourceUrl   String?
+  processed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceEmailSettings {
+  id                   String    @id @default(cuid())
+  workspaceId          String    @unique
+  notifyOnTaskCreate   Boolean   @default(true)
+  notifyOnTaskAssign   Boolean   @default(true)
+  notifyOnTaskComplete Boolean   @default(true)
+  notifyOnComment      Boolean   @default(true)
+  notifyOnDueDate      Boolean   @default(true)
+  dailyReportEnabled   Boolean   @default(false)
+  dailyReportTime      String    @default("08:00")
+  updatedAt            DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}

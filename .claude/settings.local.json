@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat > \"/c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/backend/.env.example\" << 'ENVEOF'\nDATABASE_URL=postgresql://user:password@localhost:5432/executive_tasks_db\nJWT_SECRET=your-super-secret-key-min-32-chars-change-this\nJWT_EXPIRES_IN=7d\nGEMINI_API_KEY=AIzaSy-your-gemini-api-key\nGEMINI_MODEL=gemini-1.5-flash\nSMTP_HOST=smtp.gmail.com\nSMTP_PORT=587\nSMTP_USER=your-email@gmail.com\nSMTP_PASSWORD=your-app-password\nSMTP_FROM=noreply@yourdomain.com\nFRONTEND_URL=http://localhost:5173\nNODE_ENV=development\nREDIS_URL=redis://localhost:6379\nPORT=3000\nENVEOF\necho \"Created .env.example\")",
+      "Bash(cat > \"/c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/backend/Dockerfile\" << 'DOCKEREOF'\nFROM node:20-alpine\n\nWORKDIR /app\n\nCOPY package*.json ./\nRUN npm ci --only=production\n\nCOPY prisma ./prisma/\nRUN npx prisma generate\n\nCOPY dist ./dist/\n\nEXPOSE 3000\n\nCMD [\"node\", \"dist/index.js\"]\nDOCKEREOF\necho \"Created Dockerfile\")",
+      "Read(//c/Users/shanmukha.mudragadda/.claude/projects/C--Users-shanmukha-mudragadda-Desktop-Executive-Management/memory//**)",
+      "Read(//c/Users/shanmukha.mudragadda/.claude/projects/C--Users-shanmukha-mudragadda-Desktop-Executive-Management/memory/**)",
+      "Bash(grep -n \"h-screen\\\\|overflow-auto\\\\|overflow-y-auto\\\\|overflow-hidden\\\\|overflow-scroll\" /c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/web/src/pages/*.tsx /c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/web/src/pages/**/*.tsx 2>/dev/null)",
+      "Bash(cd \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\mobile\" && npx expo install expo-av expo-document-picker 2>&1 | tail -5)",
+      "Bash(cd \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" && npm install @google/generative-ai 2>&1 | tail -5)",
+      "Bash(cd /c/Users/shanmukha.mudragadda/Desktop/Executive-Management && find . -name \"*router*\" -o -name \"*navigation*\" -o -name \"*routes*\" | grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\" | grep -v node_modules | head -20)",
+      "Bash(ls \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\mobile\\\\node_modules\" 2>&1 | grep -E \"^expo|^react-native$|^react$|^zustand\")",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && rm -rf node_modules package-lock.json && npm install 2>&1 | tail -20)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npx expo install --fix 2>&1)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npm install --legacy-peer-deps 2>&1 | tail -15)",
+      "Bash(ls \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile/node_modules/\" | grep -E \"^react$|^react-native$\")",
+      "Bash(ls \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/node_modules/\" | grep -E \"^react$|^react-native$\")",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management\" && rm -rf node_modules/react-native node_modules/react-native-safe-area-context node_modules/react-native-screens && npm install 2>&1 | tail -5)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps 2>&1 | tail -10)",
+      "Bash(find \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/backend/src\" -name \"*.ts\" | xargs grep -l -i \"google\\\\|oauth\" 2>/dev/null)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npm install expo-auth-session expo-web-browser expo-crypto --legacy-peer-deps 2>&1 | tail -5)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npx expo whoami 2>&1)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npx expo logout 2>&1)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npx expo login 2>&1)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npx expo install expo-auth-session expo-crypto expo-web-browser 2>&1)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps 2>&1 | tail -8)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npm uninstall nativewind tailwindcss --legacy-peer-deps 2>&1 | tail -5)",
+      "Bash(cd \"C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile\" && npm uninstall expo-crypto --legacy-peer-deps 2>&1 | tail -5)",
+      "Bash(ipconfig | findstr \"IPv4\")",
+      "Bash(find \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\" -name \"*TaskDetailPane*\" -o -name \"TaskDetailPane*\" 2>/dev/null | head -20)",
+      "Bash(cd \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" && npx prisma migrate dev --name add_daily_report 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" && npx prisma generate 2>&1)",
+      "Bash(find /c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/web -type f -name \"*.tsx\" 2>/dev/null | grep -v node_modules)",
+      "Bash(find /c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile -type f -name \"*.tsx\" 2>/dev/null | grep -v node_modules)",
+      "Bash(find \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\web\\\\src\" -type f -name \"*[Ww]orkspace*\" 2>/dev/null | head -20)",
+      "Bash(cd \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" && npm install xlsx && npm install --save-dev @types/xlsx 2>&1 | tail -5)",
+      "Bash(find C:/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/mobile/src -name *.tsx)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "EAssist",
+    "slug": "executive-management",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "updates": {
+      "enabled": false
+    },
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.executive.management"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#6366f1"
+      },
+      "package": "com.executive.management"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "scheme": "com.executive.management",
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "28136f0d-a33e-4339-8b9a-0d7dd9f2aba7"
+      }
+    },
+    "owner": "shanmukha.mudragadda"
+  }
+}
