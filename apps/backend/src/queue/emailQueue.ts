@@ -49,9 +49,11 @@ const sendDailyReportForUser = async (userId: string): Promise<void> => {
 
   const workspaceMembers = await prisma.workspaceMember.findMany({
     where: { userId },
-    select: { workspaceId: true },
+    select: { workspaceId: true, workspace: { select: { name: true } } },
   });
   const workspaceIds = workspaceMembers.map((m) => m.workspaceId);
+  const workspaceNames: Record<string, string> = {};
+  workspaceMembers.forEach((m) => { workspaceNames[m.workspaceId] = m.workspace.name; });
 
   const pendingTasks = await prisma.task.findMany({
     where: {
@@ -66,12 +68,16 @@ const sendDailyReportForUser = async (userId: string): Promise<void> => {
       id: true,
       title: true,
       priority: true,
+      status: true,
       dueDate: true,
       category: true,
       tags: true,
       workspaceId: true,
+      assignees: {
+        select: { user: { select: { name: true } } },
+      },
     },
-    orderBy: { dueDate: 'asc' },
+    orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }],
     take: 50,
   });
 
@@ -80,32 +86,74 @@ const sendDailyReportForUser = async (userId: string): Promise<void> => {
       user.email,
       user.name,
       pendingTasks.map((t) => ({
-        ...t,
+        id: t.id,
+        title: t.title,
+        priority: t.priority,
+        status: t.status,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+        category: t.category,
+        tags: t.tags,
+        workspaceId: t.workspaceId,
+        workspaceName: workspaceNames[t.workspaceId] || '',
+        assignees: t.assignees.map((a) => a.user.name),
       }))
     );
   }
 };
 
-// Run every minute, check which users have their daily report time now
+function getLocalTime(tz: string, now: Date): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now).replace(/\u202f/g, '');
+  } catch {
+    return `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
+  }
+}
+
+// Run every minute — checks workspace daily report settings
 export const scheduleDailyReports = (): void => {
   cron.schedule('* * * * *', async () => {
     const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     try {
-      const users = await prisma.user.findMany({
-        where: {
-          emailNotifications: true,
-          dailyReportTime: currentTime,
+      // Find workspaces with daily report enabled
+      const workspaceSettings = await prisma.workspaceEmailSettings.findMany({
+        where: { dailyReportEnabled: true },
+        select: {
+          workspaceId: true,
+          dailyReportTime: true,
+          workspace: {
+            select: {
+              members: {
+                select: {
+                  userId: true,
+                  role: true,
+                  user: { select: { timezone: true } },
+                },
+              },
+            },
+          },
         },
-        select: { id: true },
       });
 
-      for (const user of users) {
-        sendDailyReportForUser(user.id).catch((err) =>
-          console.error(`Daily report failed for user ${user.id}:`, err)
-        );
+      for (const ws of workspaceSettings) {
+        // Use the owner's timezone for the workspace schedule
+        const owner = ws.workspace.members.find((m) => m.role === 'owner');
+        const tz = owner?.user?.timezone || 'UTC';
+        const localTime = getLocalTime(tz, now);
+
+        if (localTime !== ws.dailyReportTime) continue;
+
+        // Send report to each member who has email notifications enabled
+        for (const member of ws.workspace.members) {
+          sendDailyReportForUser(member.userId).catch((err) =>
+            console.error(`Daily report failed for user ${member.userId}:`, err)
+          );
+        }
       }
     } catch (err) {
       console.error('Daily report scheduler error:', err);

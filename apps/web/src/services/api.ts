@@ -43,7 +43,7 @@ export const authApi = {
 
 // Users
 export const usersApi = {
-  updateProfile: (data: Partial<{ name: string; avatar: string; emailNotifications: boolean; dailyReportTime: string }>) =>
+  updateProfile: (data: Partial<{ name: string; avatar: string; emailNotifications: boolean; dailyReportTime: string; timezone: string }>) =>
     api.patch('/users/me', data),
   getUser: (id: string) => api.get(`/users/${id}`),
 }
@@ -64,6 +64,8 @@ export const workspacesApi = {
     api.patch(`/workspaces/${workspaceId}/members/${userId}`, data),
   removeMember: (workspaceId: string, userId: string) =>
     api.delete(`/workspaces/${workspaceId}/members/${userId}`),
+  addMember: (workspaceId: string, data: { email: string; role?: string; profile?: string }) =>
+    api.post(`/workspaces/${workspaceId}/members`, data),
   sendInvitation: (workspaceId: string, data: { email: string; role?: string }) =>
     api.post(`/workspaces/${workspaceId}/invitations`, data),
   acceptInvitation: (invitationId: string) =>

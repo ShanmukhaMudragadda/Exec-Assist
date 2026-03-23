@@ -96,12 +96,13 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
   const { user } = useAuthStore()
 
   // ── State ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'invite' | 'notifications' | 'daily'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'notifications' | 'daily'>('general')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
-  const [inviteProfile, setInviteProfile] = useState('')
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addEmail, setAddEmail] = useState('')
+  const [addRole, setAddRole] = useState<'admin' | 'member'>('member')
+  const [addProfile, setAddProfile] = useState('')
 
   // Member edit sheet
   const [editMember, setEditMember] = useState<WorkspaceMember | null>(null)
@@ -158,20 +159,25 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
     onError: () => Alert.alert('Error', 'Failed to delete workspace.'),
   })
 
-  const inviteMutation = useMutation({
+  const addMemberMutation = useMutation({
     mutationFn: () =>
-      workspacesApi.sendInvitation(workspaceId, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-        ...(inviteProfile ? { profile: inviteProfile } : {}),
+      workspacesApi.addMember(workspaceId, {
+        email: addEmail.trim(),
+        role: addRole,
+        ...(addProfile ? { profile: addProfile } : {}),
       }),
-    onSuccess: () => {
-      Alert.alert('Invited!', `Invitation sent to ${inviteEmail}.`)
-      setInviteEmail('')
-      setInviteRole('member')
-      setInviteProfile('')
+    onSuccess: (res: { data?: { message?: string } }) => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-members', workspaceId] })
+      Alert.alert('Member Added!', 'User has been added and an email notification has been sent.')
+      setAddEmail('')
+      setAddRole('member')
+      setAddProfile('')
+      setShowAddMember(false)
     },
-    onError: () => Alert.alert('Error', 'Failed to send invitation.'),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to add member.'
+      Alert.alert('Error', msg)
+    },
   })
 
   const updateMemberMutation = useMutation({
@@ -238,10 +244,7 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
     { key: 'general', icon: 'settings-outline', label: 'General' },
     { key: 'members', icon: 'people-outline', label: 'Members' },
     ...(isOwnerOrAdmin
-      ? [
-          { key: 'invite', icon: 'person-add-outline', label: 'Invite' },
-          { key: 'notifications', icon: 'mail-outline', label: 'Notify' },
-        ]
+      ? [{ key: 'notifications', icon: 'mail-outline', label: 'Notify' }]
       : []),
     ...(isOwner ? [{ key: 'daily', icon: 'time-outline', label: 'Report' }] : []),
   ] as const
@@ -333,6 +336,12 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
           {members.length} member{members.length !== 1 ? 's' : ''}
         </Text>
         {membersLoading && <ActivityIndicator color="#6366f1" size="small" />}
+        {isOwnerOrAdmin && (
+          <TouchableOpacity style={styles.addMemberBtn} onPress={() => setShowAddMember(true)}>
+            <Ionicons name="person-add-outline" size={14} color="#6366f1" />
+            <Text style={styles.addMemberBtnText}>Add Member</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Member list as one block — inner rowGap handles spacing */}
@@ -382,73 +391,6 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
         {members.length === 0 && !membersLoading && (
           <Text style={styles.emptyText}>No members found.</Text>
         )}
-      </View>
-    </View>
-  )
-
-  const renderInvite = () => (
-    <View style={styles.tabContent}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Send Invitation</Text>
-
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            value={inviteEmail}
-            onChangeText={setInviteEmail}
-            placeholder="colleague@company.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Role</Text>
-          <View style={styles.toggleRow}>
-            {(['admin', 'member'] as const).map((r) => (
-              <TouchableOpacity
-                key={r}
-                style={[styles.toggleBtn, inviteRole === r && styles.toggleBtnActive]}
-                onPress={() => setInviteRole(r)}
-              >
-                <Text style={[styles.toggleBtnText, inviteRole === r && styles.toggleBtnTextActive]}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Department (optional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
-            {DEPARTMENTS.map((p) => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.pill, inviteProfile === p && styles.pillActive]}
-                onPress={() => setInviteProfile(inviteProfile === p ? '' : p)}
-              >
-                <Text style={[styles.pillText, inviteProfile === p && styles.pillTextActive]}>{p}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.secondaryBtn, (!inviteEmail.trim() || inviteMutation.isPending) && styles.btnDisabled]}
-          onPress={() => inviteMutation.mutate()}
-          disabled={!inviteEmail.trim() || inviteMutation.isPending}
-        >
-          {inviteMutation.isPending
-            ? <ActivityIndicator color="#6366f1" size="small" />
-            : (
-              <View style={styles.btnRow}>
-                <Ionicons name="paper-plane-outline" size={15} color="#6366f1" style={{ marginRight: 6 }} />
-                <Text style={styles.secondaryBtnText}>Send Invitation</Text>
-              </View>
-            )}
-        </TouchableOpacity>
       </View>
     </View>
   )
@@ -539,7 +481,6 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
   const tabContent: Record<string, () => React.JSX.Element> = {
     general: renderGeneral,
     members: renderMembers,
-    invite: renderInvite,
     notifications: renderNotifications,
     daily: renderDaily,
   }
@@ -577,6 +518,66 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
           {(tabContent[activeTab] ?? tabContent.general)()}
         </ScrollView>
       </View>
+
+      {/* Add Member Sheet */}
+      <BottomSheet visible={showAddMember} onClose={() => setShowAddMember(false)} title="Add Member">
+        <View style={styles.sheetBody}>
+          <Text style={styles.sheetFieldLabel}>Email Address</Text>
+          <TextInput
+            style={[styles.input, { marginBottom: 16 }]}
+            value={addEmail}
+            onChangeText={setAddEmail}
+            placeholder="colleague@company.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoFocus
+          />
+
+          <Text style={styles.sheetFieldLabel}>Role</Text>
+          <View style={[styles.toggleRow, { marginBottom: 16 }]}>
+            {(['admin', 'member'] as const).map((r) => (
+              <TouchableOpacity
+                key={r}
+                style={[styles.toggleBtn, addRole === r && styles.toggleBtnActive]}
+                onPress={() => setAddRole(r)}
+              >
+                <Text style={[styles.toggleBtnText, addRole === r && styles.toggleBtnTextActive]}>
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sheetFieldLabel}>Department (optional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.pillsRow, { marginBottom: 16 }]}>
+            <TouchableOpacity
+              style={[styles.pill, addProfile === '' && styles.pillActive]}
+              onPress={() => setAddProfile('')}
+            >
+              <Text style={[styles.pillText, addProfile === '' && styles.pillTextActive]}>None</Text>
+            </TouchableOpacity>
+            {DEPARTMENTS.map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.pill, addProfile === p && styles.pillActive]}
+                onPress={() => setAddProfile(addProfile === p ? '' : p)}
+              >
+                <Text style={[styles.pillText, addProfile === p && styles.pillTextActive]}>{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, (!addEmail.trim() || addMemberMutation.isPending) && styles.btnDisabled]}
+            onPress={() => { if (addEmail.trim()) addMemberMutation.mutate() }}
+            disabled={!addEmail.trim() || addMemberMutation.isPending}
+          >
+            {addMemberMutation.isPending
+              ? <ActivityIndicator color="white" size="small" />
+              : <Text style={styles.primaryBtnText}>Add to Workspace</Text>}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
       {/* Member Edit Sheet */}
       <BottomSheet
@@ -818,6 +819,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     flex: 1,
   },
+  addMemberBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 5,
+    backgroundColor: '#eef2ff',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  addMemberBtnText: { fontSize: 12, fontWeight: '700', color: '#6366f1' },
 
   // Member cards
   memberCard: {

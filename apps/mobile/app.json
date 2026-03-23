@@ -24,8 +24,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "single",
-      "publicPath": "/mobile"
+      "output": "single"
     },
     "scheme": "com.executive.management",
     "plugins": [

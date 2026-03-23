@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
+import { usersApi } from './services/api'
 import LoginPage from './pages/auth/LoginPage'
 import VerifyEmailPage from './pages/auth/VerifyEmailPage'
 import HomeRedirect from './pages/HomeRedirect'
@@ -15,12 +17,28 @@ import { Toaster } from './components/ui/toaster'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  return isAuthenticated ? <>{children}</> : <Navigate to="/auth/login" replace />
+  const location = useLocation()
+  if (!isAuthenticated) {
+    const redirect = location.pathname + location.search
+    return <Navigate to={`/auth/login?redirect=${encodeURIComponent(redirect)}`} replace />
+  }
+  return <>{children}</>
+}
+
+function TimezoneSync() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    usersApi.updateProfile({ timezone: tz }).catch(() => {/* silent */})
+  }, [isAuthenticated])
+  return null
 }
 
 export default function App() {
   return (
     <BrowserRouter>
+      <TimezoneSync />
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/verify-email" element={<VerifyEmailPage />} />

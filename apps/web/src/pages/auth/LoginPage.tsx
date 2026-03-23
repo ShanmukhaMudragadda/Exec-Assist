@@ -1,11 +1,12 @@
 import { GoogleLogin } from '@react-oauth/google'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { authApi } from '@/services/api'
 import { toast } from '@/hooks/use-toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
@@ -13,7 +14,8 @@ export default function LoginPage() {
     try {
       const res = await authApi.googleLogin(credentialResponse.credential)
       setAuth(res.data.user, res.data.token)
-      navigate('/dashboard')
+      const redirect = searchParams.get('redirect')
+      navigate(redirect || '/dashboard')
     } catch {
       toast({ title: 'Google sign-in failed', description: 'Please try again', variant: 'destructive' })
     }

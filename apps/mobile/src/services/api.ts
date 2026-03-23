@@ -68,6 +68,8 @@ export const workspacesApi = {
   getAnalytics: (id: string) =>
     api.get<WorkspaceAnalytics>(`/workspaces/${id}/analytics`),
 
+  addMember: (workspaceId: string, data: { email: string; role?: string; profile?: string }) =>
+    api.post(`/workspaces/${workspaceId}/members`, data),
   sendInvitation: (workspaceId: string, data: { email: string; role?: string }) =>
     api.post(`/workspaces/${workspaceId}/invitations`, data),
 

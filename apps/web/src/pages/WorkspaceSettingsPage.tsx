@@ -27,10 +27,11 @@ interface WorkspaceMember {
     name: string
     email: string
     avatar?: string | null
+    emailVerified: boolean
   }
 }
 
-type Section = 'general' | 'members' | 'invite' | 'notifications' | 'daily-report'
+type Section = 'general' | 'members' | 'notifications' | 'daily-report'
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'Pre-Sales', 'Delivery', 'Product']
 
@@ -41,9 +42,10 @@ export default function WorkspaceSettingsPage() {
   const { user } = useAuthStore()
 
   const [activeSection, setActiveSection] = useState<Section>('general')
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('member')
-  const [inviteProfile, setInviteProfile] = useState('none')
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addEmail, setAddEmail] = useState('')
+  const [addRole, setAddRole] = useState('member')
+  const [addProfile, setAddProfile] = useState('none')
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
   const [isEditingInfo, setIsEditingInfo] = useState(false)
@@ -113,24 +115,28 @@ export default function WorkspaceSettingsPage() {
       toast({ title: 'Error', description: 'Failed to delete workspace', variant: 'destructive' }),
   })
 
-  const inviteMutation = useMutation({
+  const addMemberMutation = useMutation({
     mutationFn: () =>
-      workspacesApi.sendInvitation(workspaceId!, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-        ...(inviteProfile && inviteProfile !== 'none' ? { profile: inviteProfile } : {}),
+      workspacesApi.addMember(workspaceId!, {
+        email: addEmail.trim(),
+        role: addRole,
+        ...(addProfile && addProfile !== 'none' ? { profile: addProfile } : {}),
       }),
-    onSuccess: () => {
-      setInviteEmail('')
-      setInviteRole('member')
-      setInviteProfile('none')
-      toast({ title: 'Invitation sent!', description: `Invite sent to ${inviteEmail}` })
+    onSuccess: (res) => {
+      const data = res.data
+      queryClient.invalidateQueries({ queryKey: ['workspace-members', workspaceId] })
+      const email = addEmail
+      setAddEmail('')
+      setAddRole('member')
+      setAddProfile('none')
+      setShowAddMember(false)
+      toast({ title: 'Member added!', description: 'User has been added and an email notification has been sent.' })
     },
     onError: (err: unknown) => {
       const error = err as { response?: { data?: { error?: string } } }
       toast({
         title: 'Error',
-        description: error.response?.data?.error || 'Failed to send invitation',
+        description: error.response?.data?.error || 'Failed to add member',
         variant: 'destructive',
       })
     },
@@ -192,10 +198,7 @@ export default function WorkspaceSettingsPage() {
     { key: 'general', label: 'General', icon: <Settings className="w-4 h-4" /> },
     { key: 'members', label: 'Members & Roles', icon: <Users className="w-4 h-4" /> },
     ...(isOwnerOrAdmin
-      ? [
-          { key: 'invite' as Section, label: 'Invite Member', icon: <UserPlus className="w-4 h-4" /> },
-          { key: 'notifications' as Section, label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
-        ]
+      ? [{ key: 'notifications' as Section, label: 'Notifications', icon: <Bell className="w-4 h-4" /> }]
       : []),
     ...(isOwner
       ? [{ key: 'daily-report' as Section, label: 'Daily Report', icon: <Clock className="w-4 h-4" />, ownerOnly: true }]
@@ -308,12 +311,70 @@ export default function WorkspaceSettingsPage() {
 
   const SectionMembers = (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Members & Roles</h2>
-        <p className="text-sm text-muted-foreground">
-          Manage workspace members, their roles, and departments.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Members & Roles</h2>
+          <p className="text-sm text-muted-foreground">Manage workspace members, their roles, and departments.</p>
+        </div>
+        {isOwnerOrAdmin && (
+          <Button size="sm" className="gap-2" onClick={() => setShowAddMember((v) => !v)}>
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </Button>
+        )}
       </div>
+
+      {showAddMember && (
+        <Card>
+          <CardContent className="pt-6">
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (addEmail.trim()) addMemberMutation.mutate() }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label>Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Select value={addRole} onValueChange={setAddRole}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="member">Member</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Department</Label>
+                  <Select value={addProfile} onValueChange={setAddProfile}>
+                    <SelectTrigger><SelectValue placeholder="Department" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={addMemberMutation.isPending} className="gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  {addMemberMutation.isPending ? 'Adding...' : 'Add Member'}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setShowAddMember(false)}>Cancel</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6 space-y-4">
@@ -325,14 +386,25 @@ export default function WorkspaceSettingsPage() {
               return (
                 <div key={member.id || memberId} className="flex items-start gap-3 py-2 border-b last:border-0">
                   {/* Avatar */}
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-sm font-semibold shrink-0">
-                    {member.user.name.charAt(0).toUpperCase()}
-                  </div>
+                  {member.user.avatar ? (
+                    <img src={member.user.avatar} className="w-9 h-9 rounded-full object-cover shrink-0" alt={member.user.name} />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-sm font-semibold shrink-0">
+                      {member.user.email.charAt(0).toUpperCase()}
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <p className="text-sm font-medium">{member.user.name}</p>
+                      <p className="text-sm font-medium">
+                        {member.user.emailVerified ? member.user.name : member.user.email}
+                      </p>
+                      {!member.user.emailVerified && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">
+                          Pending
+                        </span>
+                      )}
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${getRoleBadge(member.role)}`}
                       >
@@ -345,7 +417,9 @@ export default function WorkspaceSettingsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">{member.user.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {member.user.emailVerified ? member.user.email : 'Not verified'}
+                    </p>
                   </div>
 
                   {/* Edit controls (owner/admin only, not for owner) */}
@@ -407,76 +481,6 @@ export default function WorkspaceSettingsPage() {
               )
             })
           )}
-        </CardContent>
-      </Card>
-    </div>
-  )
-
-  const SectionInvite = (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Invite Member</h2>
-        <p className="text-sm text-muted-foreground">
-          Send an email invitation to add someone to this workspace.
-        </p>
-      </div>
-
-      <Card>
-        <CardContent className="pt-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (!inviteEmail.trim()) return
-              inviteMutation.mutate()
-            }}
-            className="space-y-4"
-          >
-            <div className="space-y-2">
-              <Label>Email Address</Label>
-              <Input
-                type="email"
-                placeholder="colleague@company.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="member">Member</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select value={inviteProfile} onValueChange={setInviteProfile}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {DEPARTMENTS.map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button type="submit" disabled={inviteMutation.isPending} className="gap-2 w-full">
-              <UserPlus className="w-4 h-4" />
-              {inviteMutation.isPending ? 'Sending...' : 'Send Invitation'}
-            </Button>
-          </form>
         </CardContent>
       </Card>
     </div>
@@ -601,7 +605,6 @@ export default function WorkspaceSettingsPage() {
   const sectionContent: Record<Section, React.ReactNode> = {
     general: SectionGeneral,
     members: SectionMembers,
-    invite: SectionInvite,
     notifications: SectionNotifications,
     'daily-report': SectionDailyReport,
   }

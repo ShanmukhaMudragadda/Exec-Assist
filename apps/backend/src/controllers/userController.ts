@@ -16,7 +16,7 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       data,
       select: {
         id: true, email: true, name: true, role: true, emailVerified: true,
-        avatar: true, emailNotifications: true, dailyReportTime: true,
+        avatar: true, emailNotifications: true, dailyReportTime: true, timezone: true,
       },
     });
 

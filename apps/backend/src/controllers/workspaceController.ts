@@ -1,8 +1,10 @@
 import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 import { AuthRequest } from '../middleware/auth';
 import { CreateWorkspaceSchema, InvitationSchema } from '../utils/validators';
-import { queueWorkspaceInvitationEmail } from '../queue/emailQueue';
+import { queueWorkspaceInvitationEmail } from '../queue/emailQueue'
+import { sendWorkspaceAddedEmail, sendNewUserAddedEmail } from '../services/emailService';
 
 const prisma = new PrismaClient();
 
@@ -76,7 +78,7 @@ export const getWorkspace = async (req: AuthRequest, res: Response): Promise<voi
       include: {
         members: {
           include: {
-            user: { select: { id: true, name: true, email: true, avatar: true } },
+            user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } },
           },
         },
         _count: { select: { tasks: true } },
@@ -157,7 +159,7 @@ export const getMembers = async (req: AuthRequest, res: Response): Promise<void>
     const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: id },
       include: {
-        user: { select: { id: true, name: true, email: true, avatar: true } },
+        user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } },
       },
     });
 
@@ -225,6 +227,78 @@ export const removeMember = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ error: 'Failed to remove member' });
   }
 };
+
+export const addMember = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const requesterId = req.user!.id
+    const { email, role = 'member', profile } = req.body as { email: string; role?: string; profile?: string }
+
+    const requester = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: requesterId, workspaceId: id } },
+      include: { user: { select: { name: true } }, workspace: { select: { name: true } } },
+    })
+
+    if (!requester || !['owner', 'admin'].includes(requester.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' })
+      return
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { email } })
+
+    if (!targetUser) {
+      // No account yet — create a placeholder account (Google OAuth only, no password needed)
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          name: email.split('@')[0],
+          password: crypto.randomBytes(32).toString('hex'), // unusable, login is Google OAuth only
+          emailVerified: false,
+        },
+      })
+
+      await prisma.workspaceMember.create({
+        data: { userId: newUser.id, workspaceId: id, role, profile: profile || null },
+      })
+
+      await sendNewUserAddedEmail(
+        email,
+        requester.workspace.name,
+        requester.user.name,
+        id
+      )
+
+      res.status(201).json({ member: { userId: newUser.id, email, role }, message: 'User created and added to workspace.' })
+      return
+    }
+
+    const existing = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId: targetUser.id, workspaceId: id } },
+    })
+    if (existing) {
+      res.status(409).json({ error: 'User is already a member of this workspace' })
+      return
+    }
+
+    const member = await prisma.workspaceMember.create({
+      data: { userId: targetUser.id, workspaceId: id, role, profile: profile || null },
+      include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
+    })
+
+    await sendWorkspaceAddedEmail(
+      targetUser.email,
+      targetUser.name,
+      requester.workspace.name,
+      requester.user.name,
+      id
+    )
+
+    res.status(201).json({ member })
+  } catch (error) {
+    console.error('Add member error:', error)
+    res.status(500).json({ error: 'Failed to add member' })
+  }
+}
 
 export const sendInvitation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

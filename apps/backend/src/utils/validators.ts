@@ -17,6 +17,16 @@ export const CreateWorkspaceSchema = z.object({
   icon: z.string().optional(),
 });
 
+// Accepts full ISO datetime or date-only string (e.g. "2026-03-25"), normalises to ISO
+const dueDateSchema = z.string()
+  .transform((val) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return `${val}T00:00:00.000Z`;
+    return val;
+  })
+  .pipe(z.string().datetime())
+  .optional()
+  .nullable();
+
 export const CreateTaskSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
   description: z.string().max(5000).optional(),
@@ -24,7 +34,7 @@ export const CreateTaskSchema = z.object({
   tags: z.array(z.string()).default([]),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).default('todo'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
-  dueDate: z.string().datetime().optional().nullable(),
+  dueDate: dueDateSchema,
   assigneeIds: z.array(z.string()).optional(),
 });
 
@@ -35,7 +45,7 @@ export const UpdateTaskSchema = z.object({
   tags: z.array(z.string()).optional(),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-  dueDate: z.string().datetime().optional().nullable(),
+  dueDate: dueDateSchema,
   assigneeIds: z.array(z.string()).optional(),
 });
 
@@ -59,6 +69,7 @@ export const UpdateProfileSchema = z.object({
   avatar: z.string().url().optional().nullable(),
   emailNotifications: z.boolean().optional(),
   dailyReportTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  timezone: z.string().optional(),
 });
 
 export const ResetPasswordSchema = z.object({

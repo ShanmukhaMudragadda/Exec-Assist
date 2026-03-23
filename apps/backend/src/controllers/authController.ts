@@ -9,6 +9,27 @@ import {
   RegisterSchema, LoginSchema, ResetPasswordSchema, NewPasswordSchema,
 } from '../utils/validators';
 
+// Auto-accept any pending workspace invitations for a newly created user
+async function acceptPendingInvitations(prisma: PrismaClient, userId: string, email: string): Promise<void> {
+  const invitations = await prisma.workspaceInvitation.findMany({
+    where: { email, status: 'pending', expiresAt: { gt: new Date() } },
+  });
+  for (const inv of invitations) {
+    const existing = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: inv.workspaceId } },
+    });
+    if (!existing) {
+      await prisma.workspaceMember.create({
+        data: { userId, workspaceId: inv.workspaceId, role: 'member', profile: inv.profile || null },
+      });
+    }
+    await prisma.workspaceInvitation.update({
+      where: { id: inv.id },
+      data: { status: 'accepted' },
+    });
+  }
+}
+
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const prisma = new PrismaClient();
@@ -37,6 +58,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Send welcome email (non-blocking)
     sendWelcomeEmail(user.email, user.name, verifyToken).catch(console.error);
+
+    // Auto-accept any pending workspace invitations for this email
+    acceptPendingInvitations(prisma, user.id, user.email).catch(console.error);
 
     const token = generateToken({ id: user.id, email: user.email, role: user.role });
 
@@ -258,14 +282,18 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
           emailVerified: email_verified ?? false,
         },
       });
+      // Auto-accept any pending workspace invitations for this email
+      acceptPendingInvitations(prisma, user.id, user.email).catch(console.error);
     } else {
-      // Existing user — update avatar if they don't have one
-      if (!user.avatar && picture) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: { avatar: picture, emailVerified: true },
-        });
-      }
+      // Existing user — always sync name, avatar, and emailVerified from Google
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: name || user.name,
+          avatar: picture || user.avatar,
+          emailVerified: true,
+        },
+      });
     }
 
     const token = generateToken({ id: user.id, email: user.email, role: user.role });

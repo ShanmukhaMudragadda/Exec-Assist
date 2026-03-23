@@ -8,6 +8,7 @@ import {
   getMembers,
   updateMemberRole,
   removeMember,
+  addMember,
   sendInvitation,
   acceptInvitation,
   rejectInvitation,
@@ -34,6 +35,7 @@ router.delete('/:id', deleteWorkspace);
 
 // Members
 router.get('/:id/members', getMembers);
+router.post('/:id/members', addMember);
 router.patch('/:id/members/:userId', updateMemberRole);
 router.delete('/:id/members/:userId', removeMember);
 
