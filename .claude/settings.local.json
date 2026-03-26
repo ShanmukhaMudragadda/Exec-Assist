@@ -71,7 +71,9 @@
       "Bash(find C:Usersshanmukha.mudragaddaDesktopExecutive-Management -not -path */node_modules/* -not -path */.next/* -not -path */.expo/* -not -path */dist/* -not -path */.git/* -not -path */uploads/* -type f -name *.ts -o -name *.tsx -o -name *.json -o -name *.prisma -o -name *.md)",
       "Bash(grep -E \"^-.*\\\\.\\(yml|yaml|dockerfile|toml|ini\\)$\")",
       "Bash(npm install:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node -e \"require\\(''''sharp''''\\)\")",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
