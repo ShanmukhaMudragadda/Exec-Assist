@@ -1,15 +1,5 @@
 import { z } from 'zod';
 
-export const RegisterSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
-export const LoginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
 
 export const CreateWorkspaceSchema = z.object({
   name: z.string().min(1, 'Workspace name is required').max(100),
@@ -66,22 +56,7 @@ export const TaskUpdateSchema = z.object({
 
 export const UpdateProfileSchema = z.object({
   name: z.string().min(2).max(100).optional(),
-  avatar: z.string().url().optional().nullable(),
-  emailNotifications: z.boolean().optional(),
-  dailyReportTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  avatar: z.union([z.string().url(), z.string().startsWith('data:image/')]).optional().nullable(),
   timezone: z.string().optional(),
 });
 
-export const ResetPasswordSchema = z.object({
-  email: z.string().email(),
-});
-
-export const NewPasswordSchema = z.object({
-  token: z.string(),
-  password: z.string().min(8),
-});
-
-export const ChangePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
-});

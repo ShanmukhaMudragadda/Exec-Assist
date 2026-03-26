@@ -1,7 +1,5 @@
 // processors.ts - Re-exports queue helpers for centralized access
 export {
-  queueTaskAssignmentEmail,
-  queueWorkspaceInvitationEmail,
-  queueMentionNotification,
+  queueActionAssignmentEmail,
   scheduleDailyReports,
 } from './emailQueue';

@@ -50,11 +50,88 @@
 }
 
 @layer base {
+  html {
+    font-size: 13px;
+    scroll-behavior: smooth;
+  }
+
   * {
     @apply border-border;
+    box-sizing: border-box;
   }
+
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv01', 'cv03', 'cv04', 'cv09';
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #e5e7eb;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #d1d5db;
+  }
+
+  /* Remove number input arrows */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+  }
+
+  /* Date input color fix */
+  input[type='date']::-webkit-calendar-picker-indicator {
+    opacity: 0.4;
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .card-surface {
+    @apply bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0, 0, 0, 0.04)];
+  }
+
+  .section-label {
+    @apply text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest;
+  }
+
+  .row-hover {
+    @apply transition-colors duration-100 hover:bg-[#fafafa];
+  }
+
+  .btn-primary {
+    @apply bg-[#4648d4] hover:bg-[#3730a3] active:bg-[#312e81] text-white font-semibold rounded-lg transition-colors duration-150 text-xs;
+  }
+
+  .btn-ghost {
+    @apply text-[#6b7280] hover:text-[#111827] hover:bg-[#f4f4f5] font-medium rounded-lg transition-colors duration-150 text-xs;
+  }
+
+  .input-base {
+    @apply bg-white border border-[#e5e7eb] rounded-lg text-sm text-[#111827] placeholder:text-[#c4c4c4] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] transition-all duration-150;
   }
 }

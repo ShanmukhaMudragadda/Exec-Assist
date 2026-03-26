@@ -3,16 +3,13 @@ import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import { usersApi } from './services/api'
 import LoginPage from './pages/auth/LoginPage'
-import VerifyEmailPage from './pages/auth/VerifyEmailPage'
-import HomeRedirect from './pages/HomeRedirect'
-import WorkspacesPage from './pages/WorkspacesPage'
-import WorkspacePage from './pages/WorkspacePage'
-import TaskDetailPage from './pages/TaskDetailPage'
-import TranscriptsPage from './pages/TranscriptsPage'
-import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage'
+import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
-import AcceptInvitationPage from './pages/AcceptInvitationPage'
-import SmartCreatePage from './pages/SmartCreatePage'
+import InitiativesPage from './pages/InitiativesPage'
+import InitiativeDetailPage from './pages/InitiativeDetailPage'
+import CommandCenterPage from './pages/CommandCenterPage'
+import UploadDataPage from './pages/UploadDataPage'
+import ActionDetailPage from './pages/ActionDetailPage'
 import { Toaster } from './components/ui/toaster'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -41,25 +38,29 @@ export default function App() {
       <TimezoneSync />
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
 
-        {/* Home: auto-redirect to first workspace */}
-        <Route path="/" element={<PrivateRoute><HomeRedirect /></PrivateRoute>} />
-        <Route path="/dashboard" element={<PrivateRoute><HomeRedirect /></PrivateRoute>} />
+        {/* Root → dashboard */}
+        <Route path="/" element={<PrivateRoute><Navigate to="/dashboard" replace /></PrivateRoute>} />
+        <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
 
-        {/* Workspace board — the main screen */}
-        <Route path="/workspace/:id" element={<PrivateRoute><WorkspacePage /></PrivateRoute>} />
+        {/* Initiatives */}
+        <Route path="/initiatives" element={<PrivateRoute><InitiativesPage /></PrivateRoute>} />
+        <Route path="/initiatives/:initiativeId" element={<PrivateRoute><InitiativeDetailPage /></PrivateRoute>} />
+        <Route path="/initiatives/:initiativeId/actions/:actionId" element={<PrivateRoute><ActionDetailPage /></PrivateRoute>} />
 
-        {/* Supporting pages (accessible from profile dropdown) */}
-        <Route path="/workspace/:workspaceId/tasks/:taskId" element={<PrivateRoute><TaskDetailPage /></PrivateRoute>} />
-        <Route path="/workspace/:id/transcripts" element={<PrivateRoute><TranscriptsPage /></PrivateRoute>} />
-        <Route path="/workspace/:id/settings" element={<PrivateRoute><WorkspaceSettingsPage /></PrivateRoute>} />
-        <Route path="/workspace/:id/smart-create" element={<PrivateRoute><SmartCreatePage /></PrivateRoute>} />
-        <Route path="/workspaces" element={<PrivateRoute><WorkspacesPage /></PrivateRoute>} />
+        {/* Standalone action (no initiative) */}
+        <Route path="/actions/:actionId" element={<PrivateRoute><ActionDetailPage /></PrivateRoute>} />
+
+        {/* Command Center */}
+        <Route path="/command-center" element={<PrivateRoute><CommandCenterPage /></PrivateRoute>} />
+
+        {/* Upload Data */}
+        <Route path="/upload" element={<PrivateRoute><UploadDataPage /></PrivateRoute>} />
+
+        {/* Profile */}
         <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-        <Route path="/invitations/:invitationId/accept" element={<PrivateRoute><AcceptInvitationPage /></PrivateRoute>} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       <Toaster />
     </BrowserRouter>

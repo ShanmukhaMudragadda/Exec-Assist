@@ -1,0 +1,69 @@
+version: '3.8'
+
+# Revamped compose — runs the feature/revamped branch on separate ports.
+# On the server, run:  docker compose -f docker-compose.revamped.yml up -d
+#
+# Ports:
+#   Backend API  → :3001
+#   Web UI       → :8081
+#   Postgres     → internal only (exec_postgres_staging)
+
+services:
+
+  postgres_staging:
+    image: postgres:15-alpine
+    container_name: exec_postgres_staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-exec_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STAGING_DB:-exec_staging_db}
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-exec_user} -d ${STAGING_DB:-exec_staging_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend_staging:
+    image: docker.io/${DOCKER_USERNAME}/exec-backend:revamped
+    container_name: exec_backend_staging
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-exec_user}:${POSTGRES_PASSWORD}@postgres_staging:5432/${STAGING_DB:-exec_staging_db}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM:-noreply@yourdomain.com}
+      FRONTEND_URL: ${STAGING_FRONTEND_URL}
+      APP_URL: ${STAGING_APP_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      postgres_staging:
+        condition: service_healthy
+    volumes:
+      - uploads_staging_data:/app/uploads
+
+  web_staging:
+    image: docker.io/${DOCKER_USERNAME}/exec-web:revamped
+    container_name: exec_web_staging
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend_staging
+
+volumes:
+  postgres_staging_data:
+  uploads_staging_data:

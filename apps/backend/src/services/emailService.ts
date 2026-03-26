@@ -91,6 +91,8 @@ export const sendTaskAssignmentEmail = async (
   });
 };
 
+export const sendActionAssignmentEmail = sendTaskAssignmentEmail;
+
 export const sendWorkspaceAddedEmail = async (
   email: string,
   name: string,
@@ -150,26 +152,33 @@ export const sendNewUserAddedEmail = async (
   });
 };
 
-export const sendWorkspaceInvitationEmail = async (
+export const sendMemberAddedEmail = async (
   email: string,
-  workspaceName: string,
-  inviterName: string,
-  invitationId: string
+  initiativeTitle: string,
+  addedByName: string,
+  initiativeId: string
 ): Promise<void> => {
-  const registerUrl = `${process.env.APP_URL}/auth/register`;
+  const viewUrl = `${process.env.APP_URL}/initiatives/${initiativeId}`;
   await sendEmail({
     to: email,
-    subject: `You've been invited to join ${workspaceName} on EAssist`,
+    subject: `You've been added to "${initiativeTitle}" on ExecAssist`,
     html: `
-      <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #6366f1;">You're Invited!</h1>
-        <p><strong>${inviterName}</strong> has invited you to join <strong>${workspaceName}</strong> on EAssist.</p>
-        <p>Create your free account using this email address (${email}) and you'll be automatically added to the workspace.</p>
-        <a href="${registerUrl}" style="background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin: 16px 0;">
-          Create Account &amp; Join Workspace
-        </a>
-        <p style="color: #6b7280; font-size: 14px;">Already have an account? <a href="${process.env.APP_URL}/auth/login" style="color: #6366f1;">Sign in</a> and you'll be added automatically.</p>
-        <p style="color: #6b7280; font-size: 14px;">This invitation expires in 7 days.</p>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; max-width:600px; margin:0 auto; background:#f9fafb; padding:24px;">
+        <div style="background:linear-gradient(135deg,#4648d4,#6366f1); border-radius:12px; padding:28px 32px; margin-bottom:24px; text-align:center;">
+          <h1 style="margin:0; color:#ffffff; font-size:22px; font-weight:700;">You've been added!</h1>
+        </div>
+        <div style="background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:24px; margin-bottom:16px;">
+          <p style="margin:0 0 12px; color:#374151; font-size:15px;">
+            <strong>${addedByName}</strong> has added you as a collaborator on:
+          </p>
+          <div style="background:#f0f0ff; border-left:4px solid #4648d4; border-radius:6px; padding:14px 18px; margin:0 0 20px;">
+            <strong style="color:#191c1e; font-size:16px;">${initiativeTitle}</strong>
+          </div>
+          <a href="${viewUrl}" style="display:inline-block; background:#4648d4; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:15px; font-weight:600;">
+            View Initiative →
+          </a>
+        </div>
+        <p style="color:#9ca3af; font-size:12px; text-align:center; margin:0;">Sign in with Google to access ExecAssist. If you don't have an account, Google will create one automatically.</p>
       </div>
     `,
   });

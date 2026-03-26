@@ -19,9 +19,17 @@ export interface ExtractedTask {
   assigneeIds: string[]; // user IDs from the provided member list
 }
 
+export interface AISettings {
+  autoAssignOwners?: boolean;      // Use member list to assign tasks to named people
+  includeDeadlines?: boolean;      // Extract deadlines from transcript
+  priorityDetection?: boolean;     // AI infers priority from language signals
+  executiveFocus?: boolean;        // Focus on strategic/CEO-level actions only
+}
+
 export async function extractTasksFromTranscript(
   transcriptContent: string,
-  members: WorkspaceMemberForAI[] = []
+  members: WorkspaceMemberForAI[] = [],
+  settings: AISettings = {}
 ): Promise<ExtractedTask[]> {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not configured. Add it to your .env file.');
@@ -45,7 +53,26 @@ No workspace members provided. Return assigneeIds as [] for all tasks.
 
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
+  // Build settings modifiers
+  const settingsInstructions: string[] = [];
+  if (settings.autoAssignOwners === false) {
+    settingsInstructions.push('- DO NOT assign owners — return assigneeIds as [] for all tasks.');
+  }
+  if (settings.includeDeadlines === false) {
+    settingsInstructions.push('- DO NOT extract deadlines — return dueDate as null for all tasks.');
+  }
+  if (settings.priorityDetection === false) {
+    settingsInstructions.push('- Set priority to "medium" for all tasks regardless of urgency signals.');
+  }
+  if (settings.executiveFocus === true) {
+    settingsInstructions.push('- Only extract strategic, executive-level actions (decisions, approvals, key deliverables). Exclude minor operational tasks.');
+  }
+  const settingsBlock = settingsInstructions.length > 0
+    ? `\nSETTINGS OVERRIDES:\n${settingsInstructions.join('\n')}\n`
+    : '';
+
   const prompt = `You are an executive assistant. Today's date is ${today}. Analyze this meeting transcript and extract all actionable tasks.
+${settingsBlock}
 ${membersContext}
 For each task return these fields:
 
@@ -209,4 +236,70 @@ JSON Array:`;
     const msg = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to extract tasks from Excel: ${msg}`);
   }
+}
+
+export interface BriefContext {
+  userName: string;
+  initiatives: { title: string; status: string; progress: number; actionCount: number; overdueCount: number }[];
+  totalActions: number;
+  openActions: number;
+  overdueActions: number;
+  urgentActions: number;
+  completedToday: number;
+  dueToday: number;
+}
+
+export async function generateExecutiveBrief(ctx: BriefContext): Promise<{ headline: string; detail: string; metric: string | null; type: string }[]> {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured.');
+  }
+
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+  const prompt = `You are a senior executive assistant writing a morning briefing for ${ctx.userName}. Write in the style of a high-quality newspaper — clear, direct, authoritative prose.
+
+Current snapshot:
+- Open actions: ${ctx.openActions}
+- Overdue actions: ${ctx.overdueActions}
+- Urgent actions: ${ctx.urgentActions}
+- Due today: ${ctx.dueToday}
+- Completed today: ${ctx.completedToday}
+- Total initiatives: ${ctx.initiatives.length}
+
+Initiatives breakdown:
+${ctx.initiatives.map((i) => `- "${i.title}" — ${i.status}, ${i.progress}% complete, ${i.actionCount} actions, ${i.overdueCount} overdue`).join('\n')}
+
+Return ONLY a JSON array of exactly 2 objects — the two highest-signal items only. Each object:
+- "headline": a short, punchy newspaper-style headline in Title Case (5–8 words). Should read like a front-page headline — bold and declarative.
+- "detail": 2 sentences of editorial prose. First sentence states the situation clearly with specifics (name initiatives, counts, owners where known). Second sentence gives context or a recommended action.
+- "metric": null (not used in this format)
+- "type": "critical" | "warning" | "success" | "info"
+
+Type rules:
+- "critical" → overdue items, blockers, missed deadlines, stalled initiatives
+- "warning" → at-risk, due soon, low progress, urgent but not yet overdue
+- "success" → completed work, on-track initiatives, strong momentum
+- "info" → general portfolio status, neutral observations
+
+Example (do NOT copy verbatim — generate from real data):
+[
+  { "headline": "Three Overdue Actions Demand Immediate Attention", "metric": null, "detail": "Product Launch and Q2 Planning each have overdue items that remain unaddressed. Ownership should be reassigned or escalated before further slippage occurs.", "type": "critical" },
+  { "headline": "Q3 Roadmap Holds Steady at 72 Percent", "metric": null, "detail": "The Q3 Roadmap initiative continues on schedule with no open blockers reported this sprint. Momentum is strong and the team is tracking to hit the milestone on time.", "type": "success" }
+]
+
+Rules:
+- Valid JSON array ONLY — no markdown fences, no extra text outside the array
+- Skip insights where the underlying count is zero
+- Use initiative titles by name when referencing specific work
+- Prioritise critical and warning items first, success and info last
+- Write for a senior executive — no jargon, no padding, every word earns its place`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text().trim();
+  try {
+    const match = text.match(/\[[\s\S]*\]/);
+    if (match) return JSON.parse(match[0]) as { headline: string; detail: string; metric: string | null; type: string }[];
+  } catch {}
+  return [{ headline: 'Daily Brief', detail: text, metric: null, type: 'info' }];
 }

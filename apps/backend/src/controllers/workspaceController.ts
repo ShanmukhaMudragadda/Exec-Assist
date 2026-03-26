@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { AuthRequest } from '../middleware/auth';
 import { CreateWorkspaceSchema, InvitationSchema } from '../utils/validators';
-import { queueWorkspaceInvitationEmail } from '../queue/emailQueue'
+import { queueWorkspaceInvitationEmail } from '../queue/emailQueue';
 import { sendWorkspaceAddedEmail, sendNewUserAddedEmail } from '../services/emailService';
 
 const prisma = new PrismaClient();
@@ -39,11 +39,7 @@ export const listWorkspaces = async (req: AuthRequest, res: Response): Promise<v
     const memberships = await prisma.workspaceMember.findMany({
       where: { userId },
       include: {
-        workspace: {
-          include: {
-            _count: { select: { members: true, tasks: true } },
-          },
-        },
+        workspace: true,
       },
     });
 
@@ -81,7 +77,7 @@ export const getWorkspace = async (req: AuthRequest, res: Response): Promise<voi
             user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } },
           },
         },
-        _count: { select: { tasks: true } },
+        _count: { select: { initiatives: true } },
       },
     });
 
@@ -427,140 +423,26 @@ export const getWorkspaceAnalytics = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    const [total, completed, inProgress, overdue, byStatus, byPriority, tasksByTag] =
-      await Promise.all([
-        prisma.task.count({ where: { workspaceId: id } }),
-        prisma.task.count({ where: { workspaceId: id, status: 'completed' } }),
-        prisma.task.count({ where: { workspaceId: id, status: 'in-progress' } }),
-        prisma.task.count({
-          where: {
-            workspaceId: id,
-            status: { not: 'completed' },
-            dueDate: { lt: new Date() },
-          },
-        }),
-        prisma.task.groupBy({
-          by: ['status'],
-          where: { workspaceId: id },
-          _count: { status: true },
-        }),
-        prisma.task.groupBy({
-          by: ['priority'],
-          where: { workspaceId: id },
-          _count: { priority: true },
-        }),
-        prisma.task.findMany({
-          where: { workspaceId: id },
-          select: { tags: true },
-        }),
-      ]);
-
-    // Count tasks per tag
-    const tagCounts: Record<string, number> = {};
-    tasksByTag.forEach((t) => {
-      t.tags.forEach((tag) => {
-        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-      });
-    });
+    const [totalInitiatives, totalActions, completedActions, overdueActions] = await Promise.all([
+      prisma.initiative.count({ where: { workspaceId: id } }),
+      prisma.action.count({ where: { workspaceId: id } }),
+      prisma.action.count({ where: { workspaceId: id, status: 'completed' } }),
+      prisma.action.count({
+        where: { workspaceId: id, status: { not: 'completed' }, dueDate: { lt: new Date() } },
+      }),
+    ]);
 
     res.json({
       overview: {
-        total,
-        completed,
-        inProgress,
-        overdue,
-        completionRate: total ? Math.round((completed / total) * 100) : 0,
+        totalInitiatives,
+        totalActions,
+        completedActions,
+        overdueActions,
+        completionRate: totalActions ? Math.round((completedActions / totalActions) * 100) : 0,
       },
-      byStatus: byStatus.map((s) => ({ status: s.status, count: s._count.status })),
-      byPriority: byPriority.map((p) => ({ priority: p.priority, count: p._count.priority })),
-      byTag: Object.entries(tagCounts).map(([tag, count]) => ({ tag, count })),
     });
   } catch (error) {
     console.error('Analytics error:', error);
     res.status(500).json({ error: 'Failed to get analytics' });
-  }
-};
-
-export const getEmailSettings = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const member = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: id } },
-    });
-    if (!member) {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    let settings = await prisma.workspaceEmailSettings.findUnique({
-      where: { workspaceId: id },
-    });
-
-    if (!settings) {
-      settings = await prisma.workspaceEmailSettings.create({
-        data: { workspaceId: id },
-      });
-    }
-
-    res.json({ settings });
-  } catch (error) {
-    console.error('Get email settings error:', error);
-    res.status(500).json({ error: 'Failed to get email settings' });
-  }
-};
-
-export const updateEmailSettings = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const userId = req.user!.id;
-
-    const member = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: id } },
-    });
-
-    if (!member || !['owner', 'admin'].includes(member.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
-      return;
-    }
-
-    const { notifyOnTaskCreate, notifyOnTaskAssign, notifyOnTaskComplete, notifyOnComment, notifyOnDueDate, dailyReportEnabled, dailyReportTime } = req.body as {
-      notifyOnTaskCreate?: boolean;
-      notifyOnTaskAssign?: boolean;
-      notifyOnTaskComplete?: boolean;
-      notifyOnComment?: boolean;
-      notifyOnDueDate?: boolean;
-      dailyReportEnabled?: boolean;
-      dailyReportTime?: string;
-    };
-
-    const settings = await prisma.workspaceEmailSettings.upsert({
-      where: { workspaceId: id },
-      create: {
-        workspaceId: id,
-        notifyOnTaskCreate: notifyOnTaskCreate ?? true,
-        notifyOnTaskAssign: notifyOnTaskAssign ?? true,
-        notifyOnTaskComplete: notifyOnTaskComplete ?? true,
-        notifyOnComment: notifyOnComment ?? true,
-        notifyOnDueDate: notifyOnDueDate ?? true,
-        dailyReportEnabled: dailyReportEnabled ?? false,
-        dailyReportTime: dailyReportTime ?? '08:00',
-      },
-      update: {
-        ...(notifyOnTaskCreate !== undefined && { notifyOnTaskCreate }),
-        ...(notifyOnTaskAssign !== undefined && { notifyOnTaskAssign }),
-        ...(notifyOnTaskComplete !== undefined && { notifyOnTaskComplete }),
-        ...(notifyOnComment !== undefined && { notifyOnComment }),
-        ...(notifyOnDueDate !== undefined && { notifyOnDueDate }),
-        ...(dailyReportEnabled !== undefined && { dailyReportEnabled }),
-        ...(dailyReportTime !== undefined && { dailyReportTime }),
-      },
-    });
-
-    res.json({ settings });
-  } catch (error) {
-    console.error('Update email settings error:', error);
-    res.status(500).json({ error: 'Failed to update email settings' });
   }
 };

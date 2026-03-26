@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import { Button } from '@/components/ui/button'
@@ -9,23 +9,26 @@ import { Badge } from '@/components/ui/badge'
 import { usersApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
-import { User, Bell, Shield, Save } from 'lucide-react'
+import { User, Bell, Shield, Save, Camera } from 'lucide-react'
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore()
   const [name, setName] = useState(user?.name || '')
+  const [avatar, setAvatar] = useState<string | null>(user?.avatar || null)
   const [emailNotifications, setEmailNotifications] = useState(user?.emailNotifications ?? true)
   const [hasChanges, setHasChanges] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const changed =
       name !== user?.name ||
+      avatar !== (user?.avatar ?? null) ||
       emailNotifications !== user?.emailNotifications
     setHasChanges(changed)
-  }, [name, emailNotifications, user])
+  }, [name, avatar, emailNotifications, user])
 
   const updateMutation = useMutation({
-    mutationFn: (data: { name?: string; emailNotifications?: boolean }) =>
+    mutationFn: (data: { name?: string; avatar?: string | null; emailNotifications?: boolean }) =>
       usersApi.updateProfile(data),
     onSuccess: (res) => {
       const updatedUser = res.data?.user || res.data
@@ -39,17 +42,34 @@ export default function ProfilePage() {
     },
   })
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'Image too large', description: 'Please choose an image under 2 MB.', variant: 'destructive' })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setAvatar(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
     updateMutation.mutate({
       name: name.trim(),
+      avatar,
       emailNotifications,
     })
   }
 
+  const initials = user?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'
+
   return (
     <AppLayout>
-      <div className="max-w-12xl mx-auto p-8 space-y-6">
+      <div className="max-w-12xl mx-auto p-4 md:p-8 space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">Profile</h1>
@@ -59,9 +79,30 @@ export default function ProfilePage() {
         {/* Profile Card */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
-                {user?.name?.charAt(0).toUpperCase()}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Avatar with upload button */}
+              <div className="relative group">
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
+                  {avatar
+                    ? <img src={avatar} alt={user?.name} className="w-full h-full object-cover" />
+                    : initials
+                  }
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Change photo"
+                >
+                  <Camera className="w-5 h-5 text-white" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                />
               </div>
               <div>
                 <h2 className="text-xl font-semibold">{user?.name}</h2>
@@ -72,6 +113,13 @@ export default function ProfilePage() {
                   </Badge>
                   <Badge variant="outline" className="text-xs capitalize">{user?.role}</Badge>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-indigo-600 hover:underline mt-1"
+                >
+                  Change photo
+                </button>
               </div>
             </div>
           </CardHeader>
@@ -172,7 +220,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Save Button */}
-          <div className="flex justify-end">
+          <div className="flex justify-end sm:justify-end">
             <Button
               type="submit"
               disabled={updateMutation.isPending || !hasChanges}

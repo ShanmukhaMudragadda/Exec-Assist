@@ -13,13 +13,7 @@ import {
   acceptInvitation,
   rejectInvitation,
   getWorkspaceAnalytics,
-  getEmailSettings,
-  updateEmailSettings,
 } from '../controllers/workspaceController';
-import {
-  createTask,
-  listTasks,
-} from '../controllers/taskController';
 import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
@@ -46,13 +40,5 @@ router.post('/invitations/:invitationId/reject', rejectInvitation);
 
 // Analytics
 router.get('/:id/analytics', getWorkspaceAnalytics);
-
-// Email Settings
-router.get('/:id/email-settings', getEmailSettings);
-router.patch('/:id/email-settings', updateEmailSettings);
-
-// Tasks (workspace-scoped)
-router.post('/:workspaceId/tasks', createTask);
-router.get('/:workspaceId/tasks', listTasks);
 
 export default router;

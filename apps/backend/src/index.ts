@@ -10,11 +10,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import authRoutes from './routes/authRoutes';
-import workspaceRoutes from './routes/workspaceRoutes';
-import taskRoutes from './routes/taskRoutes';
-import transcriptRoutes from './routes/transcriptRoutes';
-import importRoutes from './routes/importRoutes';
 import userRoutes from './routes/userRoutes';
+import initiativeRoutes from './routes/initiativeRoutes';
 import { errorHandler } from './middleware/errorHandler';
 import { scheduleDailyReports } from './queue/emailQueue';
 
@@ -65,10 +62,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Routes
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
-app.use('/workspaces', workspaceRoutes);
-app.use('/tasks', taskRoutes);
-app.use('/workspaces', transcriptRoutes);
-app.use('/workspaces', importRoutes);
+app.use('/', initiativeRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -79,13 +73,12 @@ app.get('/health', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  socket.on('join-workspace', (workspaceId: string) => {
-    socket.join(`workspace:${workspaceId}`);
-    console.log(`Socket ${socket.id} joined workspace:${workspaceId}`);
+  socket.on('join-initiative', (initiativeId: string) => {
+    socket.join(`initiative:${initiativeId}`);
   });
 
-  socket.on('leave-workspace', (workspaceId: string) => {
-    socket.leave(`workspace:${workspaceId}`);
+  socket.on('leave-initiative', (initiativeId: string) => {
+    socket.leave(`initiative:${initiativeId}`);
   });
 
   socket.on('disconnect', () => {
