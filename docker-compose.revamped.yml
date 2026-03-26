@@ -1,12 +1,12 @@
 version: '3.8'
 
-# Revamped compose — runs the feature/revamped branch on separate ports.
+# Revamped compose — runs alongside production on the same server.
 # On the server, run:  docker compose -f docker-compose.revamped.yml up -d
 #
-# Ports:
-#   Backend API  → :3001
-#   Web UI       → :8081  (nginx is embedded inside the web image — no separate nginx container needed)
-#   Postgres     → internal only (exec_postgres_revamped)
+# Single entry point via nginx:
+#   http://eassist.forsysinc.com:9443/       → Web UI
+#   http://eassist.forsysinc.com:9443/api/   → Backend API
+#   Postgres → internal only
 
 services:
 
@@ -30,8 +30,8 @@ services:
     image: docker.io/${DOCKER_USERNAME}/exec-backend:revamped
     container_name: exec_backend_revamped
     restart: unless-stopped
-    ports:
-      - "3001:3000"
+    expose:
+      - "3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-exec_user}:${POSTGRES_PASSWORD}@postgres_revamped:5432/${REVAMPED_DB:-exec_revamped_db}
       JWT_SECRET: ${JWT_SECRET}
@@ -59,10 +59,23 @@ services:
     image: docker.io/${DOCKER_USERNAME}/exec-web:revamped
     container_name: exec_web_revamped
     restart: unless-stopped
-    ports:
-      - "8081:80"
+    expose:
+      - "80"
     depends_on:
       - backend_revamped
+
+  nginx_revamped:
+    image: nginx:alpine
+    container_name: exec_nginx_revamped
+    restart: unless-stopped
+    ports:
+      - "9443:9443"
+    volumes:
+      - ./nginx/revamped.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend_revamped
+      - web_revamped
 
 volumes:
   postgres_revamped_data:

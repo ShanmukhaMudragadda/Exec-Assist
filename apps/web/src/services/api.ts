@@ -59,6 +59,8 @@ export const membersApi = {
     api.delete(`/initiatives/${initiativeId}/members/${memberId}`),
   addMember: (initiativeId: string, data: { email: string; role?: string; department?: string }) =>
     api.post(`/initiatives/${initiativeId}/members/add`, data),
+  updateMember: (initiativeId: string, memberId: string, data: { role?: string; department?: string | null }) =>
+    api.patch(`/initiatives/${initiativeId}/members/${memberId}`, data),
 }
 
 // ── Initiative Settings ────────────────────────────────────────────────────────
@@ -104,9 +106,13 @@ export const actionsApi = {
     initiativeId: string | null;
   }>) => api.patch(`/actions/${actionId}`, data),
   delete: (actionId: string) => api.delete(`/actions/${actionId}`),
-  getCommandCenter: () => api.get('/command-center'),
+  getCommandCenter: (cursor?: string) => api.get('/command-center', { params: cursor ? { cursor } : {} }),
+  listForInitiative: (initiativeId: string, cursor: string) =>
+    api.get(`/initiatives/${initiativeId}/actions`, { params: { cursor } }),
   getExecutiveBrief: () => api.get('/executive-brief'),
   getDetail: (actionId: string) => api.get(`/actions/${actionId}`),
   addUpdate: (actionId: string, content: string) =>
     api.post(`/actions/${actionId}/updates`, { content }),
+  editUpdate: (actionId: string, updateId: string, content: string) =>
+    api.patch(`/actions/${actionId}/updates/${updateId}`, { content }),
 }

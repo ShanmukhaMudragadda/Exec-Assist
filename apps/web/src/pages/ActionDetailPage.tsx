@@ -15,6 +15,20 @@ const STATUS_CONFIG: Record<string, { label: string; dotColor: string; pillCls: 
   'completed':   { label: 'Completed',   dotColor: '#22c55e', pillCls: 'bg-[#f0fdf4] text-[#16a34a]',   activeCls: 'bg-[#f0fdf4] text-[#16a34a] border-[#bbf7d0]' },
 }
 
+/** Render @[Name](userId) tokens as styled mention pills */
+function MentionContent({ content }: { content: string }) {
+  const parts = content.split(/(@\[[^\]]+\]\([^)]+\))/g)
+  return (
+    <span>
+      {parts.map((part, i) => {
+        const m = part.match(/^@\[([^\]]+)\]\([^)]+\)$/)
+        if (m) return <span key={i} className="inline-flex items-center px-1.5 py-0 rounded-md bg-[#ede9fe] text-[#4648d4] text-[12px] font-semibold mx-0.5">@{m[1]}</span>
+        return <span key={i}>{part}</span>
+      })}
+    </span>
+  )
+}
+
 function Avatar({ name, avatar, size = 'sm' }: { name?: string; avatar?: string | null; size?: 'xs' | 'sm' | 'md' }) {
   const sizeMap = { xs: 'w-5 h-5 text-[8px]', sm: 'w-7 h-7 text-[10px]', md: 'w-9 h-9 text-[12px]' }
   const initials = name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'
@@ -36,6 +50,13 @@ export default function ActionDetailPage() {
   const [comment, setComment] = useState('')
   const [posting, setPosting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null)
+  const [editingUpdateContent, setEditingUpdateContent] = useState('')
+  const [savingUpdate, setSavingUpdate] = useState(false)
+  // Mention autocomplete
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionHighlight, setMentionHighlight] = useState(0)
+  const mentionBoxRef = useRef<HTMLDivElement>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -115,6 +136,52 @@ export default function ActionDetailPage() {
     } finally { setPosting(false) }
   }
 
+  const handleSaveUpdateEdit = async (updateId: string) => {
+    if (!editingUpdateContent.trim() || !actionId) return
+    setSavingUpdate(true)
+    try {
+      await actionsApi.editUpdate(actionId, updateId, editingUpdateContent.trim())
+      queryClient.invalidateQueries({ queryKey: ['action', actionId] })
+      setEditingUpdateId(null)
+    } finally { setSavingUpdate(false) }
+  }
+
+  // Mention helpers
+  const mentionMembers: any[] = mentionQuery !== null
+    ? members.filter((m: any) => m.user?.name?.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 6)
+    : []
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setComment(val)
+    const cursor = e.target.selectionStart ?? val.length
+    const before = val.slice(0, cursor)
+    const m = before.match(/@(\w*)$/)
+    if (m) { setMentionQuery(m[1]); setMentionHighlight(0) }
+    else setMentionQuery(null)
+  }
+
+  const insertMention = (member: any) => {
+    const cursor = commentRef.current?.selectionStart ?? comment.length
+    const before = comment.slice(0, cursor)
+    const after = comment.slice(cursor)
+    const atPos = before.lastIndexOf('@')
+    const newText = before.slice(0, atPos) + `@[${member.user.name}](${member.user.id}) ` + after
+    setComment(newText)
+    setMentionQuery(null)
+    setTimeout(() => commentRef.current?.focus(), 0)
+  }
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionMembers.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHighlight((h) => Math.min(h + 1, mentionMembers.length - 1)) }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setMentionHighlight((h) => Math.max(h - 1, 0)) }
+      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(mentionMembers[mentionHighlight]); return }
+      else if (e.key === 'Escape') { setMentionQuery(null); return }
+    }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePostComment(e as any)
+  }
+
   useEffect(() => {
     if (commentRef.current) {
       commentRef.current.style.height = 'auto'
@@ -145,6 +212,13 @@ export default function ActionDetailPage() {
   const tags: { id: string; name: string; color: string }[] = action.tags?.map((at: any) => at.tag) || []
   const updates: any[] = action.updates || []
   const statusCfg = STATUS_CONFIG[action.status] || STATUS_CONFIG['todo']
+
+  // Can the current user edit this action?
+  const userMemberRole = initiative
+    ? (initiative.creator?.id === user?.id ? 'owner' : (members.find((m: any) => m.userId === user?.id)?.role ?? 'member'))
+    : 'owner'
+  const isOwnerOrAdmin = userMemberRole === 'owner' || userMemberRole === 'admin'
+  const canEdit = isOwnerOrAdmin || action.createdBy === user?.id || action.assignee?.id === user?.id
 
   // All assignable people
   const allAssignees = initiative ? [
@@ -187,6 +261,7 @@ export default function ActionDetailPage() {
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: statusCfg.dotColor }} />
                   {isOverdue && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#fef2f2] text-[#dc2626]">Overdue</span>}
+                  {!canEdit && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#f3f4f6] text-[#9ca3af] flex items-center gap-1"><span className="material-symbols-outlined text-[11px]">lock</span>View only</span>}
                   {saving && <span className="text-[10px] text-[#9ca3af]">Saving...</span>}
                 </div>
                 <button
@@ -212,14 +287,15 @@ export default function ActionDetailPage() {
                 />
               ) : (
                 <h1
-                  onClick={() => { setTitleVal(action.title); setEditTitle(true) }}
+                  onClick={() => { if (canEdit) { setTitleVal(action.title); setEditTitle(true) } }}
                   className={cn(
-                    'text-[18px] font-bold text-[#111827] leading-snug tracking-tight cursor-text hover:opacity-75 transition-opacity mb-3 group flex items-center gap-2',
+                    'text-[18px] font-bold text-[#111827] leading-snug tracking-tight mb-3 group flex items-center gap-2',
+                    canEdit && 'cursor-text hover:opacity-75 transition-opacity',
                     action.status === 'completed' && 'line-through text-[#9ca3af]'
                   )}
                 >
                   {action.title}
-                  <span className="material-symbols-outlined text-[14px] text-[#d1d5db] opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
+                  {canEdit && <span className="material-symbols-outlined text-[14px] text-[#d1d5db] opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
                 </h1>
               )}
 
@@ -238,14 +314,15 @@ export default function ActionDetailPage() {
                 />
               ) : (
                 <div
-                  onClick={() => { setDescVal(action.description || ''); setEditDesc(true) }}
+                  onClick={() => { if (canEdit) { setDescVal(action.description || ''); setEditDesc(true) } }}
                   className={cn(
-                    'text-[13px] leading-relaxed mb-4 cursor-text hover:opacity-75 transition-opacity group flex items-start gap-2',
+                    'text-[13px] leading-relaxed mb-4 group flex items-start gap-2',
+                    canEdit && 'cursor-text hover:opacity-75 transition-opacity',
                     action.description ? 'text-[#6b7280]' : 'text-[#c4c4c4] italic'
                   )}
                 >
-                  <span className="flex-1">{action.description || 'Add a description...'}</span>
-                  <span className="material-symbols-outlined text-[13px] text-[#d1d5db] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">edit</span>
+                  <span className="flex-1">{action.description || (canEdit ? 'Add a description...' : <span className="text-[#e5e7eb]">No description</span>)}</span>
+                  {canEdit && <span className="material-symbols-outlined text-[13px] text-[#d1d5db] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">edit</span>}
                 </div>
               )}
 
@@ -264,10 +341,14 @@ export default function ActionDetailPage() {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mr-1">Status:</span>
                 {Object.entries(STATUS_CONFIG).map(([s, cfg]) => (
-                  <button key={s} onClick={() => handleUpdate({ status: s })}
+                  <button key={s}
+                    onClick={() => canEdit && handleUpdate({ status: s })}
+                    disabled={!canEdit}
                     className={cn(
                       'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border',
-                      action.status === s ? cfg.activeCls : 'bg-white text-[#9ca3af] border-[#e5e7eb] hover:border-[#4648d4]/30 hover:text-[#4648d4]'
+                      action.status === s ? cfg.activeCls : 'bg-white text-[#9ca3af] border-[#e5e7eb]',
+                      canEdit && action.status !== s && 'hover:border-[#4648d4]/30 hover:text-[#4648d4]',
+                      !canEdit && 'cursor-default opacity-70'
                     )}
                   >
                     {cfg.label}
@@ -291,14 +372,50 @@ export default function ActionDetailPage() {
                   </div>
                 )}
                 {updates.map((upd) => (
-                  <div key={upd.id} className="px-5 py-4 flex gap-3">
+                  <div key={upd.id} className="px-5 py-4 flex gap-3 group/upd">
                     <Avatar name={upd.user?.name} avatar={upd.user?.avatar} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 mb-1">
                         <span className="text-[13px] font-semibold text-[#111827]">{upd.user?.name}</span>
                         <span className="text-[11px] text-[#9ca3af]">{formatDistanceToNow(new Date(upd.createdAt), { addSuffix: true })}</span>
+                        {upd.user?.id === user?.id && editingUpdateId !== upd.id && (
+                          <button
+                            onClick={() => { setEditingUpdateId(upd.id); setEditingUpdateContent(upd.content) }}
+                            className="text-[10px] text-[#9ca3af] hover:text-[#4648d4] opacity-0 group-hover/upd:opacity-100 transition-all ml-1"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </div>
-                      <p className="text-[13px] text-[#374151] leading-relaxed whitespace-pre-wrap">{upd.content}</p>
+                      {editingUpdateId === upd.id ? (
+                        <div>
+                          <textarea
+                            autoFocus
+                            value={editingUpdateContent}
+                            onChange={(e) => setEditingUpdateContent(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Escape') setEditingUpdateId(null) }}
+                            rows={3}
+                            className="w-full bg-white border border-[#e5e7eb] rounded-lg px-3 py-2 text-[13px] text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] resize-none"
+                          />
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <button
+                              onClick={() => handleSaveUpdateEdit(upd.id)}
+                              disabled={savingUpdate || !editingUpdateContent.trim()}
+                              className="px-3 py-1 bg-[#4648d4] text-white text-[11px] font-semibold rounded-lg hover:bg-[#3730a3] transition-colors disabled:opacity-40"
+                            >
+                              {savingUpdate ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingUpdateId(null)}
+                              className="px-3 py-1 bg-[#f3f4f6] text-[#6b7280] text-[11px] font-semibold rounded-lg hover:bg-[#e5e7eb] transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[13px] text-[#374151] leading-relaxed whitespace-pre-wrap"><MentionContent content={upd.content} /></p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -306,18 +423,35 @@ export default function ActionDetailPage() {
               <form onSubmit={handlePostComment} className="px-5 py-4 border-t border-[#f3f4f6] bg-[#fafafa]">
                 <div className="flex gap-3">
                   <Avatar name={user?.name} avatar={user?.avatar} size="sm" />
-                  <div className="flex-1">
+                  <div className="flex-1 relative">
                     <textarea
                       ref={commentRef}
-                      placeholder="Post an update or share progress..."
+                      placeholder="Post an update… type @ to mention someone"
                       value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePostComment(e as any) }}
+                      onChange={handleCommentChange}
+                      onKeyDown={handleCommentKeyDown}
                       rows={2}
                       className="w-full bg-white border border-[#e5e7eb] rounded-lg px-3 py-2.5 text-[13px] text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] resize-none placeholder:text-[#c4c4c4] transition-all"
                     />
+                    {/* Mention dropdown */}
+                    {mentionQuery !== null && mentionMembers.length > 0 && (
+                      <div ref={mentionBoxRef} className="absolute bottom-full left-0 mb-1 w-56 bg-white border border-[#e5e7eb] rounded-xl shadow-lg z-50 overflow-hidden">
+                        {mentionMembers.map((m: any, i: number) => (
+                          <button key={m.user.id} type="button"
+                            onMouseDown={(e) => { e.preventDefault(); insertMention(m) }}
+                            className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors', i === mentionHighlight ? 'bg-[#ede9fe]' : 'hover:bg-[#fafafa]')}
+                          >
+                            <Avatar name={m.user.name} avatar={m.user.avatar} size="xs" />
+                            <div className="min-w-0">
+                              <p className="text-[12px] font-semibold text-[#111827] truncate">{m.user.name}</p>
+                              <p className="text-[10px] text-[#9ca3af] truncate">{m.user.email}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex justify-between items-center mt-2">
-                      <span className="text-[10px] text-[#9ca3af]">⌘+Enter to submit</span>
+                      <span className="text-[10px] text-[#9ca3af]">⌘+Enter to submit · @ to mention</span>
                       <button type="submit" disabled={posting || !comment.trim()}
                         className="px-3.5 py-1.5 bg-[#4648d4] text-white text-[11px] font-semibold rounded-lg hover:bg-[#3730a3] transition-colors disabled:opacity-40"
                       >
@@ -342,13 +476,16 @@ export default function ActionDetailPage() {
                   <span className="text-[12px] text-[#6b7280]">Priority</span>
                   <div className="flex gap-1">
                     {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
-                      <button key={p} onClick={() => handleUpdate({ priority: p })}
+                      <button key={p}
+                        onClick={() => canEdit && handleUpdate({ priority: p })}
+                        disabled={!canEdit}
                         className={cn('px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize border transition-all', action.priority === p
                           ? p === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca]'
                             : p === 'high' ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]'
                             : p === 'medium' ? 'bg-[#eff6ff] text-[#2563eb] border-[#bfdbfe]'
                             : 'bg-[#f3f4f6] text-[#6b7280] border-[#e5e7eb]'
-                          : 'bg-transparent text-[#9ca3af] border-transparent hover:border-[#e5e7eb] hover:text-[#6b7280]'
+                          : canEdit ? 'bg-transparent text-[#9ca3af] border-transparent hover:border-[#e5e7eb] hover:text-[#6b7280]'
+                          : 'bg-transparent text-[#d1d5db] border-transparent cursor-default'
                         )}
                       >{p}</button>
                     ))}
@@ -360,12 +497,13 @@ export default function ActionDetailPage() {
                   <span className="text-[12px] text-[#6b7280]">Due Date</span>
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => dueDateRef.current?.showPicker?.()}
-                      className={cn('text-[12px] font-medium hover:text-[#4648d4] transition-colors', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]')}
+                      onClick={() => canEdit && dueDateRef.current?.showPicker?.()}
+                      disabled={!canEdit}
+                      className={cn('text-[12px] font-medium transition-colors', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]', canEdit && 'hover:text-[#4648d4]', !canEdit && 'cursor-default')}
                     >
-                      {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className="text-[#9ca3af] font-normal">Set date</span>}
+                      {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className={canEdit ? 'text-[#9ca3af] font-normal' : 'text-[#d1d5db] font-normal'}>No due date</span>}
                     </button>
-                    {action.dueDate && (
+                    {action.dueDate && canEdit && (
                       <button onClick={() => handleUpdate({ dueDate: null })} className="text-[#9ca3af] hover:text-[#dc2626] text-[13px] leading-none">×</button>
                     )}
                     <input ref={dueDateRef} type="date"
@@ -381,8 +519,9 @@ export default function ActionDetailPage() {
                   <span className="text-[12px] text-[#6b7280]">Initiative</span>
                   <div className="relative" ref={initiativeDropRef}>
                     <button
-                      onClick={() => setShowInitiativeDropdown((v) => !v)}
-                      className="flex items-center gap-1 text-[12px] font-semibold text-[#4648d4] hover:opacity-70 max-w-[150px] text-right truncate transition-opacity"
+                      onClick={() => canEdit && setShowInitiativeDropdown((v) => !v)}
+                      disabled={!canEdit}
+                      className={cn('flex items-center gap-1 text-[12px] font-semibold text-[#4648d4] max-w-[150px] text-right truncate transition-opacity', canEdit && 'hover:opacity-70', !canEdit && 'cursor-default')}
                     >
                       <span className="truncate">{action.initiative?.title || <span className="text-[#9ca3af] font-normal">None</span>}</span>
                       <span className="material-symbols-outlined text-[12px] text-[#d1d5db] shrink-0">expand_more</span>
@@ -427,8 +566,10 @@ export default function ActionDetailPage() {
                 <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #f9fafb' }}>
                   <span className="text-[12px] text-[#6b7280]">Assignee</span>
                   <div className="relative" ref={assigneeRef}>
-                    <button onClick={() => setShowAssigneeDropdown((v) => !v)}
-                      className="flex items-center gap-1.5 text-[12px] font-medium text-[#111827] hover:text-[#4648d4] transition-colors"
+                    <button
+                      onClick={() => canEdit && setShowAssigneeDropdown((v) => !v)}
+                      disabled={!canEdit}
+                      className={cn('flex items-center gap-1.5 text-[12px] font-medium text-[#111827] transition-colors', canEdit && 'hover:text-[#4648d4]', !canEdit && 'cursor-default')}
                     >
                       {action.assignee ? (
                         <>
@@ -474,7 +615,7 @@ export default function ActionDetailPage() {
             </div>
 
             {/* Quick actions */}
-            {action.status !== 'completed' && (
+            {canEdit && action.status !== 'completed' && (
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
                 <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">Quick Actions</p>
                 <div className="space-y-1.5">
@@ -496,8 +637,8 @@ export default function ActionDetailPage() {
               </div>
             )}
 
-            {/* Delete — owner only */}
-            {(initiative ? user?.id === initiative.creator?.id : user?.id === action.createdBy) && (
+            {/* Delete — owner/admin or action creator */}
+            {(isOwnerOrAdmin || action.createdBy === user?.id) && (
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
                 {confirmDelete ? (
                   <div className="space-y-2">

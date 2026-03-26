@@ -8,7 +8,9 @@ import {
   deleteInitiative,
   listMembers,
   removeMember,
+  updateMember,
   addMember,
+  listActions,
   getSettings,
   updateSettings,
   listTags,
@@ -26,6 +28,7 @@ import {
   getExecutiveBrief,
   getAction,
   createActionUpdate,
+  updateActionUpdate,
 } from '../controllers/actionController';
 
 const router = Router();
@@ -43,6 +46,7 @@ router.delete('/initiatives/:initiativeId', authMiddleware, deleteInitiative);
 
 // ── members ─────────────────────────────────────────────────────────────────
 router.get('/initiatives/:initiativeId/members', authMiddleware, listMembers);
+router.patch('/initiatives/:initiativeId/members/:memberId', authMiddleware, updateMember);
 router.delete('/initiatives/:initiativeId/members/:memberId', authMiddleware, removeMember);
 
 // ── add member ───────────────────────────────────────────────────────────────
@@ -58,6 +62,7 @@ router.post('/initiatives/:initiativeId/tags', authMiddleware, createTag);
 router.delete('/initiatives/:initiativeId/tags/:tagId', authMiddleware, deleteTag);
 
 // ── actions ─────────────────────────────────────────────────────────────────
+router.get('/initiatives/:initiativeId/actions', authMiddleware, listActions);
 router.post('/actions', authMiddleware, createAction);                           // standalone (no initiative)
 router.post('/actions/generate', authMiddleware, generateStandaloneActions);     // AI generate without initiative
 router.post('/initiatives/:initiativeId/actions', authMiddleware, createAction);
@@ -67,5 +72,6 @@ router.get('/actions/:actionId', authMiddleware, getAction);
 router.patch('/actions/:actionId', authMiddleware, updateAction);
 router.delete('/actions/:actionId', authMiddleware, deleteAction);
 router.post('/actions/:actionId/updates', authMiddleware, createActionUpdate);
+router.patch('/actions/:actionId/updates/:updateId', authMiddleware, updateActionUpdate);
 
 export default router;

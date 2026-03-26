@@ -42,6 +42,11 @@ export default function CommandCenterPage() {
   const queryClient = useQueryClient()
   const now = new Date()
   const [filter, setFilter] = useState<Filter>('all')
+  const [ccCursor, setCcCursor] = useState<string | undefined>(undefined)
+  const [extraActions, setExtraActions] = useState<any[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [totalActions, setTotalActions] = useState(0)
 
   // Create Action pane state
   const [showCreate, setShowCreate] = useState(false)
@@ -73,9 +78,15 @@ export default function CommandCenterPage() {
   const { data: ccData, isLoading } = useQuery({
     queryKey: ['command-center'],
     queryFn: () => actionsApi.getCommandCenter().then((r) => r.data),
-  })
+    onSuccess: (data: any) => {
+      setHasMore(data.meta?.hasMore ?? false)
+      setCcCursor(data.meta?.nextCursor ?? undefined)
+      setTotalActions(data.meta?.total ?? 0)
+      setExtraActions([])
+    },
+  } as any)
 
-  const allActions: any[] = (ccData as any)?.actions || []
+  const allActions: any[] = [...((ccData as any)?.actions || []), ...extraActions]
   const overdueActions = allActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed')
   const openActions = allActions.filter((a) => a.status !== 'completed')
   const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7)
@@ -104,6 +115,19 @@ export default function CommandCenterPage() {
     grouped[iid].actions.push(action)
   })
   const groups = Object.values(grouped)
+
+  const handleLoadMore = async () => {
+    if (!ccCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const res = await actionsApi.getCommandCenter(ccCursor)
+      const { actions: more, meta } = (res.data as any)
+      setExtraActions((prev) => [...prev, ...more])
+      setHasMore(meta.hasMore)
+      setCcCursor(meta.nextCursor)
+    } catch {}
+    finally { setLoadingMore(false) }
+  }
 
   const updateAction = async (actionId: string, status: string) => {
     try {
@@ -429,6 +453,22 @@ export default function CommandCenterPage() {
             )
           })}
         </div>
+
+        {/* Load more */}
+        {hasMore && filter === 'all' && (
+          <button
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="w-full h-11 border border-[#e5e7eb] rounded-xl text-[#6b7280] text-[12px] font-semibold hover:border-[#4648d4]/40 hover:text-[#4648d4] hover:bg-[#f5f3ff]/30 transition-all flex items-center justify-center gap-2 bg-white disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <><div className="w-3.5 h-3.5 border-2 border-[#e5e7eb] border-t-[#4648d4] rounded-full animate-spin" /> Loading...</>
+            ) : (
+              <><span className="material-symbols-outlined text-[16px]">expand_more</span>
+              Show more ({totalActions - allActions.length} remaining)</>
+            )}
+          </button>
+        )}
       </div>
 
       {/* AI Generate pane */}

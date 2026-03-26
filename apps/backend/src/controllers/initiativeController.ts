@@ -12,12 +12,17 @@ async function canAccess(userId: string, initiativeId: string) {
     where: { id: initiativeId },
     select: { createdBy: true, title: true },
   });
-  if (!initiative) return { ok: false, initiative: null };
-  if (initiative.createdBy === userId) return { ok: true, initiative };
+  if (!initiative) return { ok: false, initiative: null, role: null };
+  if (initiative.createdBy === userId) return { ok: true, initiative, role: 'owner' };
   const member = await prisma.initiativeMember.findUnique({
     where: { userId_initiativeId: { userId, initiativeId } },
   });
-  return { ok: !!member, initiative };
+  return { ok: !!member, initiative, role: member?.role ?? null };
+}
+
+// owner or admin can edit
+function canEdit(role: string | null) {
+  return role === 'owner' || role === 'admin';
 }
 
 // ── initiative CRUD ───────────────────────────────────────────────────────────
@@ -119,10 +124,14 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
-    const [initiative, pending] = await Promise.all([
+    const PAGE = 25;
+    const isMemberOnly = !canEdit(role);
+    const memberFilter = isMemberOnly ? { OR: [{ assigneeId: userId }, { createdBy: userId }] } : {};
+
+    const [initiative, pending, actionsTotal] = await Promise.all([
       prisma.initiative.findUnique({
         where: { id: initiativeId },
         include: {
@@ -131,12 +140,14 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
           settings: true,
           tags: true,
           actions: {
+            where: memberFilter,
             include: {
               assignee: { select: { id: true, name: true, avatar: true } },
               creator: { select: { id: true, name: true, avatar: true } },
               tags: { include: { tag: true } },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+            take: PAGE + 1,
           },
         },
       }),
@@ -145,15 +156,64 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
         select: { id: true, email: true, role: true, department: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.action.count({ where: { initiativeId, ...memberFilter } }),
     ]);
 
     if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
 
-    const total = initiative.actions.length;
-    const completed = initiative.actions.filter((a) => a.status === 'completed').length;
-    const computedProgress = total > 0 ? Math.round((completed / total) * 100) : initiative.progress;
+    const hasMore = initiative.actions.length > PAGE;
+    const actions = hasMore ? initiative.actions.slice(0, PAGE) : initiative.actions;
+    const nextCursor = hasMore ? actions[actions.length - 1].id : null;
 
-    return res.json({ initiative: { ...initiative, progress: computedProgress, pending } });
+    // Progress computed from full count
+    const completedCount = await prisma.action.count({ where: { initiativeId, status: 'completed' } });
+    const computedProgress = actionsTotal > 0 ? Math.round((completedCount / actionsTotal) * 100) : initiative.progress;
+
+    return res.json({
+      initiative: {
+        ...initiative,
+        actions,
+        progress: computedProgress,
+        pending,
+        actionsMeta: { total: actionsTotal, hasMore, nextCursor },
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const listActions = async (req: AuthRequest, res: Response) => {
+  try {
+    const { initiativeId } = req.params;
+    const userId = req.user!.id;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string || '25', 10), 100);
+
+    const { ok, role } = await canAccess(userId, initiativeId);
+    if (!ok) return res.status(403).json({ error: 'Access denied' });
+
+    const isMemberOnly = !canEdit(role);
+    const memberFilter = isMemberOnly ? { OR: [{ assigneeId: userId }, { createdBy: userId }] } : {};
+
+    const actions = await prisma.action.findMany({
+      where: { initiativeId, ...memberFilter },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        assignee: { select: { id: true, name: true, avatar: true } },
+        creator: { select: { id: true, name: true, avatar: true } },
+        tags: { include: { tag: true } },
+      },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: limit + 1,
+    });
+
+    const hasMore = actions.length > limit;
+    const data = hasMore ? actions.slice(0, limit) : actions;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
+
+    return res.json({ actions: data, meta: { hasMore, nextCursor } });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -166,8 +226,9 @@ export const updateInitiative = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = updateSchema.parse(req.body);
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can edit the initiative' });
 
     const updated = await prisma.initiative.update({
       where: { id: initiativeId },
@@ -235,6 +296,37 @@ export const listMembers = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const updateMember = async (req: AuthRequest, res: Response) => {
+  try {
+    const { initiativeId, memberId } = req.params;
+    const userId = req.user!.id;
+
+    const { ok, role } = await canAccess(userId, initiativeId);
+    if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can edit members' });
+
+    const updateSchema = z.object({
+      role: z.enum(['admin', 'member']).optional(),
+      department: z.string().optional().nullable(),
+    });
+    const data = updateSchema.parse(req.body);
+
+    const updated = await prisma.initiativeMember.update({
+      where: { userId_initiativeId: { userId: memberId, initiativeId } },
+      data: {
+        ...(data.role !== undefined && { role: data.role }),
+        ...(data.department !== undefined && { department: data.department ?? null }),
+      },
+      include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
+    });
+    return res.json({ member: updated });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const removeMember = async (req: AuthRequest, res: Response) => {
   try {
     const { initiativeId, memberId } = req.params;
@@ -266,8 +358,9 @@ export const addMember = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = addMemberSchema.parse(req.body);
 
-    const { ok, initiative: init } = await canAccess(userId, initiativeId);
+    const { ok, initiative: init, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can add members' });
 
     const { sendMemberAddedEmail } = await import('../services/emailService');
 
@@ -355,8 +448,9 @@ export const updateSettings = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = settingsSchema.parse(req.body);
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can update settings' });
 
     const settings = await prisma.initiativeSettings.upsert({
       where: { initiativeId },
@@ -400,8 +494,9 @@ export const createTag = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = tagSchema.parse(req.body);
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can create tags' });
 
     const tag = await prisma.tag.upsert({
       where: { name_initiativeId: { name: data.name, initiativeId } },
@@ -421,8 +516,9 @@ export const deleteTag = async (req: AuthRequest, res: Response) => {
     const { initiativeId, tagId } = req.params;
     const userId = req.user!.id;
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can delete tags' });
 
     await prisma.tag.deleteMany({ where: { id: tagId, initiativeId } });
     return res.json({ success: true });

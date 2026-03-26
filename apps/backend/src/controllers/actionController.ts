@@ -3,25 +3,59 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { AuthRequest } from '../middleware/auth';
+import { sendMentionNotificationEmail } from '../services/emailService';
+
+/** Extract unique userIds from @[Name](userId) mention tokens */
+function parseMentionIds(content: string): string[] {
+  const regex = /@\[[^\]]+\]\(([^)]+)\)/g;
+  const ids: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) ids.push(match[1]);
+  return [...new Set(ids)];
+}
+
+async function notifyMentions(content: string, posterId: string, actionId: string) {
+  const mentionedIds = parseMentionIds(content);
+  if (!mentionedIds.length) return;
+  const [action, poster, mentionedUsers] = await Promise.all([
+    prisma.action.findUnique({ where: { id: actionId }, select: { title: true, initiativeId: true } }),
+    prisma.user.findUnique({ where: { id: posterId }, select: { name: true } }),
+    prisma.user.findMany({ where: { id: { in: mentionedIds } }, select: { id: true, name: true, email: true } }),
+  ]);
+  if (!action || !poster) return;
+  await Promise.all(
+    mentionedUsers
+      .filter((u) => u.id !== posterId)
+      .map((u) => sendMentionNotificationEmail(u.email, u.name, poster.name, action.title, actionId, action.initiativeId, content))
+  );
+}
 
 const prisma = new PrismaClient();
 
-async function canAccess(userId: string, initiativeId: string) {
+async function canAccess(userId: string, initiativeId: string): Promise<{ ok: boolean; role: string | null }> {
   const initiative = await prisma.initiative.findUnique({ where: { id: initiativeId }, select: { createdBy: true } });
-  if (!initiative) return false;
-  if (initiative.createdBy === userId) return true;
+  if (!initiative) return { ok: false, role: null };
+  if (initiative.createdBy === userId) return { ok: true, role: 'owner' };
   const member = await prisma.initiativeMember.findUnique({
     where: { userId_initiativeId: { userId, initiativeId } },
   });
-  return !!member;
+  return { ok: !!member, role: member?.role ?? null };
+}
+
+function canEdit(role: string | null) {
+  return role === 'owner' || role === 'admin';
 }
 
 // For actions that may have no initiative (standalone), check access at action level
-async function canAccessAction(userId: string, action: { initiativeId: string | null; createdBy: string; assigneeId: string | null }) {
+async function canAccessAction(userId: string, action: { initiativeId: string | null; createdBy: string; assigneeId: string | null }): Promise<{ ok: boolean; canModify: boolean; role: string | null }> {
+  const isOwnerOrAssignee = action.createdBy === userId || action.assigneeId === userId;
   if (!action.initiativeId) {
-    return action.createdBy === userId || action.assigneeId === userId;
+    return { ok: isOwnerOrAssignee, canModify: isOwnerOrAssignee, role: null };
   }
-  return canAccess(userId, action.initiativeId);
+  const { ok, role } = await canAccess(userId, action.initiativeId);
+  if (!ok) return { ok: false, canModify: false, role: null };
+  // owners/admins can modify any action; members can only modify their own
+  return { ok: true, canModify: canEdit(role) || isOwnerOrAssignee, role };
 }
 
 const ACTION_INCLUDE = {
@@ -77,7 +111,7 @@ export const createAction = async (req: AuthRequest, res: Response) => {
     const data = createSchema.parse(req.body);
     const initiativeId = paramInitiativeId || data.initiativeId || null;
 
-    if (initiativeId && !(await canAccess(userId, initiativeId))) {
+    if (initiativeId && !(await canAccess(userId, initiativeId)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -114,7 +148,7 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const items = bulkCreateSchema.parse(req.body.actions);
 
-    if (!(await canAccess(userId, initiativeId))) {
+    if (!(await canAccess(userId, initiativeId)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -183,13 +217,14 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
     const action = await prisma.action.findUnique({ where: { id: actionId } });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    if (!(await canAccessAction(userId, action))) {
+    const { ok, canModify } = await canAccessAction(userId, action);
+    if (!ok || !canModify) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // If moving to a new initiative, verify access to the target initiative
     if (data.initiativeId && data.initiativeId !== action.initiativeId) {
-      if (!(await canAccess(userId, data.initiativeId))) {
+      if (!(await canAccess(userId, data.initiativeId)).ok) {
         return res.status(403).json({ error: 'Access denied to target initiative' });
       }
     }
@@ -231,13 +266,11 @@ export const deleteAction = async (req: AuthRequest, res: Response) => {
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
     if (action.initiativeId) {
-      // Only the initiative creator can delete initiative actions
-      const initiative = await prisma.initiative.findUnique({
-        where: { id: action.initiativeId },
-        select: { createdBy: true },
-      });
-      if (!initiative || initiative.createdBy !== userId) {
-        return res.status(403).json({ error: 'Only the initiative owner can delete actions' });
+      const { ok, role } = await canAccess(userId, action.initiativeId);
+      if (!ok) return res.status(403).json({ error: 'Access denied' });
+      // owners/admins can delete any action; members can only delete actions they created
+      if (!canEdit(role) && action.createdBy !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
       }
     } else {
       // Standalone action: only the creator can delete
@@ -257,6 +290,8 @@ export const deleteAction = async (req: AuthRequest, res: Response) => {
 export const getCommandCenter = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 100);
 
     // All initiatives the user owns or is a member of
     const userInitiatives = await prisma.initiative.findMany({
@@ -270,41 +305,41 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
     });
     const initiativeIds = userInitiatives.map((i) => i.id);
 
-    const actions = await prisma.action.findMany({
-      where: {
-        OR: [
-          { assigneeId: userId },
-          { createdBy: userId },
-          ...(initiativeIds.length ? [{ initiativeId: { in: initiativeIds } }] : []),
-        ],
-      },
-      include: {
-        initiative: { select: { id: true, title: true, status: true } },
-        creator: { select: { id: true, name: true, avatar: true } },
-        assignee: { select: { id: true, name: true, avatar: true } },
-        tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
-      },
-      orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
-    });
-
-    const grouped = {
-      todo: actions.filter((a) => a.status === 'todo'),
-      'in-progress': actions.filter((a) => a.status === 'in-progress'),
-      'in-review': actions.filter((a) => a.status === 'in-review'),
-      completed: actions.filter((a) => a.status === 'completed'),
+    const actionWhere = {
+      OR: [
+        { assigneeId: userId },
+        { createdBy: userId },
+        ...(initiativeIds.length ? [{ initiativeId: { in: initiativeIds } }] : []),
+      ],
     };
+
+    const [actions, total] = await Promise.all([
+      prisma.action.findMany({
+        where: actionWhere,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: {
+          initiative: { select: { id: true, title: true, status: true } },
+          creator: { select: { id: true, name: true, avatar: true } },
+          assignee: { select: { id: true, name: true, avatar: true } },
+          tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+        },
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        take: limit + 1,
+      }),
+      prisma.action.count({ where: actionWhere }),
+    ]);
+
+    const hasMore = actions.length > limit;
+    const data = hasMore ? actions.slice(0, limit) : actions;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
 
     const stats = {
-      total: actions.length,
-      completed: grouped.completed.length,
-      inProgress: grouped['in-progress'].length + grouped['in-review'].length,
-      todo: grouped.todo.length,
-      overdue: actions.filter(
-        (a) => a.dueDate && new Date(a.dueDate) < new Date() && a.status !== 'completed'
-      ).length,
+      total,
+      completed: await prisma.action.count({ where: { ...actionWhere, status: 'completed' } as any }),
+      overdue: data.filter((a) => a.dueDate && new Date(a.dueDate) < new Date() && a.status !== 'completed').length,
     };
 
-    return res.json({ actions, grouped, stats });
+    return res.json({ actions: data, meta: { total, hasMore, nextCursor }, stats });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -326,7 +361,7 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
       };
     };
 
-    if (!(await canAccess(userId, initiativeId))) {
+    if (!(await canAccess(userId, initiativeId)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -445,6 +480,31 @@ export const generateStandaloneActions = async (req: AuthRequest, res: Response)
   }
 };
 
+export const updateActionUpdate = async (req: AuthRequest, res: Response) => {
+  try {
+    const { updateId } = req.params;
+    const userId = req.user!.id;
+    const { content } = req.body as { content: string };
+
+    if (!content?.trim()) return res.status(400).json({ error: 'Content is required' });
+
+    const existing = await (prisma.actionUpdate as any).findUnique({ where: { id: updateId } });
+    if (!existing) return res.status(404).json({ error: 'Update not found' });
+    if (existing.userId !== userId) return res.status(403).json({ error: 'You can only edit your own updates' });
+
+    const updated = await (prisma.actionUpdate as any).update({
+      where: { id: updateId },
+      data: { content: content.trim() },
+      include: { user: { select: { id: true, name: true, avatar: true } } },
+    });
+    notifyMentions(content.trim(), userId, existing.actionId).catch(console.error);
+    return res.json({ update: updated });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 // ── Action Detail + Updates ───────────────────────────────────────────────────
 
 export const getAction = async (req: AuthRequest, res: Response) => {
@@ -479,7 +539,8 @@ export const getAction = async (req: AuthRequest, res: Response) => {
 
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    if (!(await canAccessAction(userId, action))) {
+    const { ok: canView } = await canAccessAction(userId, action);
+    if (!canView) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -501,7 +562,8 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
     const action = await prisma.action.findUnique({ where: { id: actionId }, select: { initiativeId: true, createdBy: true, assigneeId: true } });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    if (!(await canAccessAction(userId, action))) {
+    const { ok: canView } = await canAccessAction(userId, action);
+    if (!canView) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -510,6 +572,7 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
         data: { actionId, userId, content: content.trim() },
         include: { user: { select: { id: true, name: true, avatar: true } } },
       });
+      notifyMentions(content.trim(), userId, actionId).catch(console.error);
       return res.status(201).json({ update });
     } catch {
       // ActionUpdate not in Prisma client yet — instruct to run prisma generate

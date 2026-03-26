@@ -153,22 +153,41 @@ export const sendMentionNotificationEmail = async (
   mentionedEmail: string,
   mentionedName: string,
   mentionerName: string,
-  taskTitle: string,
-  taskId: string,
-  workspaceId: string
+  actionTitle: string,
+  actionId: string,
+  initiativeId: string | null,
+  message: string
 ): Promise<void> => {
-  const taskUrl = `${process.env.APP_URL}/workspace/${workspaceId}/tasks/${taskId}`;
+  const actionUrl = initiativeId
+    ? `${process.env.APP_URL}/initiatives/${initiativeId}/actions/${actionId}`
+    : `${process.env.APP_URL}/actions/${actionId}`;
+
+  // Strip mention tokens from the displayed message for readability
+  const cleanMessage = message.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
+
   await sendEmail({
     to: mentionedEmail,
-    subject: `${mentionerName} mentioned you in "${taskTitle}"`,
+    subject: `${mentionerName} mentioned you in "${actionTitle}"`,
     html: `
-      <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #6366f1;">You were mentioned</h1>
-        <p>Hi ${mentionedName},</p>
-        <p><strong>${mentionerName}</strong> mentioned you in a comment on task: <strong>${taskTitle}</strong></p>
-        <a href="${taskUrl}" style="background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin: 16px 0;">
-          View Task
-        </a>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; max-width:600px; margin:0 auto; background:#f9fafb; padding:24px;">
+        <div style="background:linear-gradient(135deg,#4648d4,#6366f1); border-radius:12px; padding:28px 32px; margin-bottom:24px; text-align:center;">
+          <h1 style="margin:0; color:#ffffff; font-size:20px; font-weight:700;">You were mentioned</h1>
+        </div>
+        <div style="background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:24px; margin-bottom:16px;">
+          <p style="margin:0 0 12px; color:#374151; font-size:15px;">
+            Hi ${mentionedName}, <strong>${mentionerName}</strong> mentioned you in a comment on:
+          </p>
+          <div style="background:#f0f0ff; border-left:4px solid #4648d4; border-radius:6px; padding:10px 16px; margin:0 0 16px;">
+            <strong style="color:#191c1e; font-size:14px;">${actionTitle}</strong>
+          </div>
+          <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; margin:0 0 20px;">
+            <p style="margin:0; color:#374151; font-size:14px; line-height:1.6; white-space:pre-wrap;">${cleanMessage}</p>
+          </div>
+          <a href="${actionUrl}" style="display:inline-block; background:#4648d4; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:15px; font-weight:600;">
+            View Action →
+          </a>
+        </div>
+        <p style="color:#9ca3af; font-size:12px; text-align:center; margin:0;">ExecAssist · You were mentioned in an action update.</p>
       </div>
     `,
   });

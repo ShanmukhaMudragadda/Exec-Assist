@@ -15,7 +15,7 @@ interface Action {
   id: string; title: string; description?: string | null; status: string; priority: string
   dueDate?: string | null
   assignee?: { id: string; name: string; avatar?: string | null } | null
-  creator: { id: string; name: string }
+  creator: { id: string; name: string; avatar?: string | null }
   tags?: ActionTag[]
 }
 interface Member { userId: string; role: string; department?: string | null; user: { id: string; name: string; email: string; avatar?: string | null } }
@@ -157,6 +157,10 @@ export default function InitiativeDetailPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
   const [inviteDepartment, setInviteDepartment] = useState('')
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [editMemberRole, setEditMemberRole] = useState<'member' | 'admin'>('member')
+  const [editMemberDepartment, setEditMemberDepartment] = useState('')
+  const [savingMember, setSavingMember] = useState(false)
   const [inviting, setInviting] = useState(false)
   const [notifSettings, setNotifSettings] = useState({ emailNotifications: true, dailyReportEnabled: false, dailyReportTime: '09:00' })
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
@@ -167,6 +171,10 @@ export default function InitiativeDetailPage() {
   const actionDateRef = useRef<HTMLInputElement>(null)
   const [editingAiIndex, setEditingAiIndex] = useState<number | null>(null)
   const [savingNotif, setSavingNotif] = useState(false)
+  const [extraActions, setExtraActions] = useState<any[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [actionsCursor, setActionsCursor] = useState<string | null>(null)
+  const [hasMoreActions, setHasMoreActions] = useState(false)
 
   void user
 
@@ -201,10 +209,25 @@ export default function InitiativeDetailPage() {
     }
   }, [initiative?.settings])
 
+  // Sync pagination state when initiative loads/refreshes
+  useEffect(() => {
+    if (!initiative) return
+    const meta = (initiative as any).actionsMeta
+    setHasMoreActions(meta?.hasMore ?? false)
+    setActionsCursor(meta?.nextCursor ?? null)
+    setExtraActions([]) // reset on fresh load
+  }, [initiative?.id, (initiative as any)?.actionsMeta?.nextCursor])
+
   const now = new Date()
-  const allActions = initiative?.actions || []
+  const allActions = [...(initiative?.actions || []), ...extraActions]
   const members = initiative?.members || []
   const allTags = initiative?.tags || []
+
+  // Determine current user's role in this initiative
+  const userRole = initiative?.creator?.id === user?.id
+    ? 'owner'
+    : members.find((m) => m.user.id === user?.id)?.role ?? 'member'
+  const isOwnerOrAdmin = userRole === 'owner' || userRole === 'admin'
   const overdueActions = allActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed')
 
   // Build autocomplete suggestions from all actions
@@ -247,7 +270,7 @@ export default function InitiativeDetailPage() {
 
     // Tag matches
     allTags.filter((t) => t.name.toLowerCase().includes(q)).forEach((tag) => {
-      const count = allActions.filter((a) => a.tags?.some((at) => at.tag.id === tag.id)).length
+      const count = allActions.filter((a) => a.tags?.some((at: any) => at.tag.id === tag.id)).length
       if (!seen.has('tg:' + tag.id)) { seen.add('tg:' + tag.id); suggestions.push({ type: 'tag' as any, label: `#${tag.name}`, sublabel: `${count} action${count !== 1 ? 's' : ''}`, value: tag.name }) }
     })
 
@@ -333,6 +356,19 @@ export default function InitiativeDetailPage() {
     } catch {}
   }
 
+  const handleLoadMore = async () => {
+    if (!initiativeId || !actionsCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const res = await actionsApi.listForInitiative(initiativeId, actionsCursor)
+      const { actions: more, meta } = (res.data as any)
+      setExtraActions((prev) => [...prev, ...more])
+      setHasMoreActions(meta.hasMore)
+      setActionsCursor(meta.nextCursor)
+    } catch {}
+    finally { setLoadingMore(false) }
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteEmail.trim() || !initiativeId) return
@@ -349,6 +385,20 @@ export default function InitiativeDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
     } catch {}
     finally { setInviting(false) }
+  }
+
+  const handleUpdateMember = async (memberId: string) => {
+    if (!initiativeId) return
+    setSavingMember(true)
+    try {
+      await membersApi.updateMember(initiativeId, memberId, {
+        role: editMemberRole,
+        department: editMemberDepartment.trim() || null,
+      })
+      setEditingMemberId(null)
+      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+    } catch {}
+    finally { setSavingMember(false) }
   }
 
   const handleSaveNotifications = async () => {
@@ -445,14 +495,16 @@ export default function InitiativeDetailPage() {
                 )
               })()}
 
-              {/* Settings */}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] hover:bg-[#ede9fe] rounded-lg transition-colors shrink-0"
-                title="Settings"
-              >
-                <span className="material-symbols-outlined text-[20px]">settings</span>
-              </button>
+              {/* Settings — owners/admins only */}
+              {isOwnerOrAdmin && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] hover:bg-[#ede9fe] rounded-lg transition-colors shrink-0"
+                  title="Settings"
+                >
+                  <span className="material-symbols-outlined text-[20px]">settings</span>
+                </button>
+              )}
 
               {/* Split Add Action button */}
               <div ref={dropdownRef} className="relative flex">
@@ -581,7 +633,8 @@ export default function InitiativeDetailPage() {
                   return (
                     <div
                       key={action.id}
-                      className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100', action.status === 'completed' && 'opacity-50')}
+                      onClick={() => navigate(`/initiatives/${initiativeId}/actions/${action.id}`)}
+                      className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100 cursor-pointer', action.status === 'completed' && 'opacity-50')}
                     >
                       {/* Status bar */}
                       <div
@@ -595,9 +648,8 @@ export default function InitiativeDetailPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-0.5">
                             <h4
-                              onClick={() => navigate(`/initiatives/${initiativeId}/actions/${action.id}`)}
                               className={cn(
-                                'text-[13px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors',
+                                'text-[13px] font-medium text-[#111827] truncate transition-colors',
                                 action.status === 'completed' && 'line-through text-[#9ca3af]'
                               )}
                             >
@@ -605,7 +657,7 @@ export default function InitiativeDetailPage() {
                             </h4>
                             <div className="flex items-center gap-2 shrink-0">
                               {isOD ? (
-                                <span className="text-[11px] font-semibold text-[#dc2626]">{format(new Date(action.dueDate), 'MMM d')}</span>
+                                <span className="text-[11px] font-semibold text-[#dc2626]">{format(new Date(action.dueDate!), 'MMM d')}</span>
                               ) : action.dueDate ? (
                                 <span className="text-[11px] text-[#9ca3af]">{format(new Date(action.dueDate), 'MMM d')}</span>
                               ) : null}
@@ -652,13 +704,13 @@ export default function InitiativeDetailPage() {
                             <div className="flex items-center gap-2 shrink-0">
                               {action.status !== 'completed' && (
                                 <button
-                                  onClick={() => handleUpdateAction(action.id, 'completed')}
+                                  onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
                                   className="text-[11px] font-semibold text-[#4648d4] opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
                                 >
                                   ✓ Done
                                 </button>
                               )}
-                              {user?.id === initiative?.createdBy && (
+                              {isOwnerOrAdmin && (
                                 confirmDeleteActionId === action.id ? (
                                   <div className="flex items-center gap-1.5">
                                     <button
@@ -692,6 +744,22 @@ export default function InitiativeDetailPage() {
                   )
                 })}
               </div>
+            )}
+
+            {/* Load more */}
+            {hasMoreActions && (
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="w-full h-10 border border-[#e5e7eb] rounded-xl text-[#6b7280] text-[12px] font-semibold hover:border-[#4648d4]/40 hover:text-[#4648d4] hover:bg-[#f5f3ff]/30 transition-all flex items-center justify-center gap-2 bg-white disabled:opacity-50"
+              >
+                {loadingMore ? (
+                  <><div className="w-3.5 h-3.5 border-2 border-[#e5e7eb] border-t-[#4648d4] rounded-full animate-spin" /> Loading...</>
+                ) : (
+                  <><span className="material-symbols-outlined text-[16px]">expand_more</span>
+                  Show more actions ({(initiative as any)?.actionsMeta?.total - allActions.length} remaining)</>
+                )}
+              </button>
             )}
 
             {/* Add via AI */}
@@ -1068,16 +1136,69 @@ export default function InitiativeDetailPage() {
                       const rows = creatorIsMember
                         ? members
                         : [{ userId: initiative.creator.id, role: 'owner', user: { id: initiative.creator.id, name: initiative.creator.name, email: '', avatar: initiative.creator.avatar || null } } as Member, ...members]
-                      return rows.map((m) => (
-                        <div key={m.userId} className="flex items-center gap-3 px-6 py-3.5 hover:bg-[#fafafa] transition-colors">
-                          <Avatar name={m.user?.name} avatar={m.user?.avatar} size="sm" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold text-[#111827] truncate">{m.user?.name}</p>
-                            {m.user?.email && <p className="text-[11px] text-[#9ca3af] truncate">{m.user.email}</p>}
+                      return rows.map((m) => {
+                        const isEditing = editingMemberId === m.userId
+                        const canEditThisMember = isOwnerOrAdmin && m.role !== 'owner'
+                        return (
+                          <div key={m.userId} className="px-6 py-3.5 hover:bg-[#fafafa] transition-colors">
+                            <div className="flex items-center gap-3 group/member">
+                              <Avatar name={m.user?.name} avatar={m.user?.avatar} size="sm" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold text-[#111827] truncate">{m.user?.name}</p>
+                                {m.user?.email && <p className="text-[11px] text-[#9ca3af] truncate">{m.user.email}</p>}
+                                {(m as any).department && !isEditing && <p className="text-[10px] text-[#9ca3af] mt-0.5">{(m as any).department}</p>}
+                              </div>
+                              <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', m.role === 'owner' ? 'bg-[#ede9fe] text-[#4648d4]' : m.role === 'admin' ? 'bg-[#eff6ff] text-[#2563eb]' : 'bg-[#f3f4f6] text-[#6b7280]')}>{m.role}</span>
+                              {canEditThisMember && !isEditing && (
+                                <button
+                                  onClick={() => { setEditingMemberId(m.userId); setEditMemberRole(m.role as 'member' | 'admin'); setEditMemberDepartment((m as any).department || '') }}
+                                  className="opacity-0 group-hover/member:opacity-100 text-[#9ca3af] hover:text-[#4648d4] transition-all p-1 rounded"
+                                  title="Edit member"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                                </button>
+                              )}
+                            </div>
+                            {isEditing && (
+                              <div className="mt-3 space-y-2 pl-10">
+                                <div>
+                                  <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1">Role</p>
+                                  <div className="flex gap-2">
+                                    {(['member', 'admin'] as const).map((r) => (
+                                      <button key={r} type="button" onClick={() => setEditMemberRole(r)}
+                                        className={cn('flex-1 h-7 text-[11px] font-semibold rounded-lg capitalize border transition-all', editMemberRole === r ? 'bg-[#4648d4] text-white border-[#4648d4]' : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:border-[#4648d4]/30')}
+                                      >{r}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1">Department</p>
+                                  <div className="flex flex-wrap gap-1 mb-1.5">
+                                    {['Engineering', 'Sales', 'Presales', 'Consultant', 'Solution', 'Marketing', 'Finance'].map((d) => (
+                                      <button key={d} type="button" onClick={() => setEditMemberDepartment(editMemberDepartment === d ? '' : d)}
+                                        className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all', editMemberDepartment === d ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]' : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:border-[#4648d4]/30')}
+                                      >{d}</button>
+                                    ))}
+                                  </div>
+                                  <input type="text" placeholder="Custom department..."
+                                    value={editMemberDepartment}
+                                    onChange={(e) => setEditMemberDepartment(e.target.value)}
+                                    className="w-full h-8 px-2.5 bg-white border border-[#e5e7eb] rounded-lg text-[11px] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none"
+                                  />
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <button onClick={() => handleUpdateMember(m.userId)} disabled={savingMember}
+                                    className="px-3 py-1.5 bg-[#4648d4] text-white text-[11px] font-semibold rounded-lg hover:bg-[#3730a3] transition-colors disabled:opacity-40"
+                                  >{savingMember ? 'Saving...' : 'Save'}</button>
+                                  <button onClick={() => setEditingMemberId(null)}
+                                    className="px-3 py-1.5 bg-[#f3f4f6] text-[#6b7280] text-[11px] font-semibold rounded-lg hover:bg-[#e5e7eb] transition-colors"
+                                  >Cancel</button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', m.role === 'owner' ? 'bg-[#ede9fe] text-[#4648d4]' : m.role === 'admin' ? 'bg-[#eff6ff] text-[#2563eb]' : 'bg-[#f3f4f6] text-[#6b7280]')}>{m.role}</span>
-                        </div>
-                      ))
+                        )
+                      })
                     })()}
                     {/* Pending members (invited but not yet signed in) */}
                     {(initiative.pending ?? []).map((p) => (
@@ -1094,8 +1215,8 @@ export default function InitiativeDetailPage() {
                     ))}
                   </div>
 
-                  {/* Add member section */}
-                  <div className="px-6 py-5" style={{ borderTop: '1px solid #f3f4f6' }}>
+                  {/* Add member section — owners/admins only */}
+                  {isOwnerOrAdmin && <div className="px-6 py-5" style={{ borderTop: '1px solid #f3f4f6' }}>
                     <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">Add Member</p>
                     <form onSubmit={handleInvite} className="space-y-3">
                       <input
@@ -1143,7 +1264,7 @@ export default function InitiativeDetailPage() {
                       </button>
                       <p className="text-[11px] text-[#9ca3af]">They'll be added immediately and notified by email.</p>
                     </form>
-                  </div>
+                  </div>}
                 </div>
               )}
 
