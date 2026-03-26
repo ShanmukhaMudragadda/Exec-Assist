@@ -1,8 +1,10 @@
 version: '3.8'
 
+# Local development — builds images from source.
+# Run:  docker compose up --build
+
 services:
 
-  # ── PostgreSQL ───────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: exec_postgres
@@ -21,7 +23,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Backend API ──────────────────────────────────────────────────────────────
   backend:
     build:
       context: ./apps/backend
@@ -32,7 +33,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-exec_user}:${POSTGRES_PASSWORD:-exec_password}@postgres:5432/${POSTGRES_DB:-executive_tasks_db}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
@@ -41,7 +42,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM:-noreply@yourdomain.com}
-      FRONTEND_URL: ${FRONTEND_URL:-http://yourdomain.com}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      APP_URL: ${APP_URL:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       NODE_ENV: production
@@ -52,49 +54,20 @@ services:
     volumes:
       - uploads_data:/app/uploads
 
-  # ── Web app (Vite/React) ─────────────────────────────────────────────────────
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: exec_web
     restart: unless-stopped
-    depends_on:
-      - backend
-
-  # ── Mobile as Web app (Expo web) ─────────────────────────────────────────────
-  mobile-web:
-    build:
-      context: ./apps/mobile
-      dockerfile: Dockerfile.web
-      args:
-        EXPO_PUBLIC_API_URL: ${VITE_API_URL:-http://localhost:3000}
-    container_name: exec_mobile_web
-    restart: unless-stopped
-    depends_on:
-      - backend
-
-  # ── Nginx reverse proxy ──────────────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: exec_nginx
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "8080:8080"
-      - "443:443"
-      - "3001:3001"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - nginx_certs:/etc/nginx/certs
+      - "8080:80"
     depends_on:
       - backend
-      - web
-      - mobile-web
 
 volumes:
   postgres_data:
   uploads_data:
-  nginx_certs:

@@ -28,41 +28,6 @@ export const sendEmail = async (options: EmailOptions): Promise<void> => {
   }
 };
 
-export const sendWelcomeEmail = async (email: string, name: string, token: string): Promise<void> => {
-  const verifyUrl = `${process.env.APP_URL}/auth/verify-email?token=${token}`;
-  await sendEmail({
-    to: email,
-    subject: 'Welcome to Executive Management Tool - Verify Your Email',
-    html: `
-      <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #6366f1;">Welcome, ${name}!</h1>
-        <p>Thank you for joining Executive Management Tool. Please verify your email address to get started.</p>
-        <a href="${verifyUrl}" style="background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin: 16px 0;">
-          Verify Email
-        </a>
-        <p style="color: #6b7280; font-size: 14px;">This link expires in 24 hours. If you didn't create an account, ignore this email.</p>
-      </div>
-    `,
-  });
-};
-
-export const sendPasswordResetEmail = async (email: string, token: string): Promise<void> => {
-  const resetUrl = `${process.env.APP_URL}/auth/reset-password?token=${token}`;
-  await sendEmail({
-    to: email,
-    subject: 'Reset Your Password - Executive Management Tool',
-    html: `
-      <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #6366f1;">Reset Your Password</h1>
-        <p>You requested a password reset. Click the button below to create a new password.</p>
-        <a href="${resetUrl}" style="background: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin: 16px 0;">
-          Reset Password
-        </a>
-        <p style="color: #6b7280; font-size: 14px;">This link expires in 1 hour. If you didn't request this, ignore this email.</p>
-      </div>
-    `,
-  });
-};
 
 export const sendTaskAssignmentEmail = async (
   assigneeEmail: string,
