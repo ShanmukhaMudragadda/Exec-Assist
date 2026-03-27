@@ -230,18 +230,30 @@ export default function UploadDataPage() {
       const err = (e as any).error as string
       if (err === 'not-allowed') {
         setRecordError('Microphone access denied. Please allow microphone permission and try again.')
-      } else if (err !== 'no-speech') {
+        recognitionRef.current = null
+        setRecording(false)
+        setInterimText('')
+        stopVisualizer()
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      } else if (err === 'no-speech') {
+        // no-speech is not a real error — recognition will fire onend and we'll restart
+      } else {
         setRecordError(`Recording error: ${err}`)
+        recognitionRef.current = null
+        setRecording(false)
+        setInterimText('')
+        stopVisualizer()
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
       }
-      setRecording(false)
-      setInterimText('')
-      stopVisualizer()
-      if (timerRef.current) clearInterval(timerRef.current)
     }
 
     recognition.onend = () => {
+      // Only restart if stopRecording() hasn't been called (ref is still set)
       if (recognitionRef.current) {
-        try { recognition.start() } catch {}
+        // Small delay avoids InvalidStateError when Chrome hasn't fully torn down yet
+        setTimeout(() => {
+          try { recognitionRef.current?.start() } catch {}
+        }, 200)
       }
     }
 
