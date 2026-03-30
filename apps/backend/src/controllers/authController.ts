@@ -57,6 +57,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
     }
 
     const { email, name, picture, email_verified, sub: googleId } = payload;
+    console.log('[googleAuth] picture from token:', picture);
 
     // Find or create user
     let user = await prisma.user.findUnique({ where: { email } });
@@ -104,6 +105,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       );
     }
 
+    console.log('[googleAuth] user.avatar after save:', user.avatar);
     const token = generateToken({ id: user.id, email: user.email, role: user.role });
 
     res.json({

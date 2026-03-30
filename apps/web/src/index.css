@@ -24,6 +24,10 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 239 84% 67%;
     --radius: 0.5rem;
+    /* Mobile PWA safe area padding */
+    --content-pt: calc(56px + env(safe-area-inset-top, 0px));
+    --content-pb: calc(80px + env(safe-area-inset-bottom, 0px));
+    --header-pt: calc(env(safe-area-inset-top, 0px) + 12px);
   }
 
   .dark {
@@ -51,8 +55,15 @@
 
 @layer base {
   html {
-    font-size: 13px;
+    font-size: 16px;
     scroll-behavior: smooth;
+  }
+
+  @media (min-width: 768px) {
+    :root {
+      --content-pt: 0px;
+      --content-pb: 0px;
+    }
   }
 
   * {
@@ -116,7 +127,7 @@
   }
 
   .section-label {
-    @apply text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest;
+    @apply text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest;
   }
 
   .row-hover {

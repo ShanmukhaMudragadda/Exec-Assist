@@ -97,23 +97,23 @@ export default function InitiativesPage() {
 
   return (
     <AppLayout>
-      <div className="min-h-screen p-4 md:p-7">
+      <div className="min-h-screen p-3 md:p-3.5">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-[20px] font-bold text-[#111827] tracking-tight">Initiatives</h1>
-            <span className="text-[13px] font-medium text-[#9ca3af] tabular-nums">{initiatives.length}</span>
+            <h1 className="text-[22px] font-bold text-[#111827] tracking-tight">Initiatives</h1>
+            <span className="text-[14px] font-medium text-[#9ca3af] tabular-nums">{initiatives.length}</span>
             {atRiskCount > 0 && (
-              <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-[#fef2f2] text-[#dc2626]">
+              <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#fef2f2] text-[#dc2626]">
                 {atRiskCount} at risk
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:flex-none">
-              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-[15px]">search</span>
+              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-[16px]">search</span>
               <input
-                className="pl-8 pr-3 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[12px] w-full sm:w-44 focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] transition-all placeholder:text-[#c4c4c4]"
+                className="pl-8 pr-3 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[13px] w-full sm:w-44 focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] transition-all placeholder:text-[#c4c4c4]"
                 placeholder="Search initiatives..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -121,9 +121,9 @@ export default function InitiativesPage() {
             </div>
             <button
               onClick={() => setShowCreate(true)}
-              className="bg-[#4648d4] hover:bg-[#3730a3] active:bg-[#312e81] text-white px-3.5 py-2.5 rounded-lg font-semibold text-[12px] flex items-center gap-1.5 transition-colors duration-150 shrink-0 min-h-[44px]"
+              className="bg-[#4648d4] hover:bg-[#3730a3] active:bg-[#312e81] text-white px-3.5 py-2.5 rounded-lg font-semibold text-[13px] flex items-center gap-1.5 transition-colors duration-150 shrink-0 min-h-[44px]"
             >
-              <span className="material-symbols-outlined text-[15px]">add</span>
+              <span className="material-symbols-outlined text-[16px]">add</span>
               New Initiative
             </button>
           </div>
@@ -136,7 +136,7 @@ export default function InitiativesPage() {
               key={key}
               onClick={() => setStatusFilter(key)}
               className={cn(
-                'px-3.5 py-2 text-[12px] font-medium transition-all duration-150 relative',
+                'px-3.5 py-2 text-[13px] font-medium transition-all duration-150 relative',
                 statusFilter === key
                   ? key === 'at-risk'
                     ? 'text-[#dc2626]'
@@ -146,7 +146,7 @@ export default function InitiativesPage() {
             >
               {label}
               {count > 0 && (
-                <span className="ml-1.5 text-[11px] opacity-60 tabular-nums">{count}</span>
+                <span className="ml-1.5 text-[12px] opacity-60 tabular-nums">{count}</span>
               )}
               {statusFilter === key && (
                 <div
@@ -158,7 +158,7 @@ export default function InitiativesPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
           {/* Initiative List */}
           <div className="col-span-12 lg:col-span-8">
             {isLoading ? (
@@ -173,13 +173,13 @@ export default function InitiativesPage() {
                 >
                   rocket_launch
                 </span>
-                <p className="text-[13px] font-medium text-[#9ca3af]">
+                <p className="text-[14px] font-medium text-[#9ca3af]">
                   {search ? 'No results found' : 'No initiatives yet'}
                 </p>
                 {!search && (
                   <button
                     onClick={() => setShowCreate(true)}
-                    className="mt-4 text-[12px] font-semibold text-[#4648d4] hover:opacity-70 transition-opacity"
+                    className="mt-4 text-[13px] font-semibold text-[#4648d4] hover:opacity-70 transition-opacity"
                   >
                     Create your first initiative →
                   </button>
@@ -212,14 +212,14 @@ export default function InitiativesPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div className="flex items-center gap-2 flex-wrap min-w-0">
-                              <h3 className="text-[13px] font-semibold text-[#111827] group-hover:text-[#4648d4] transition-colors truncate">
+                              <h3 className="text-[14px] font-semibold text-[#111827] group-hover:text-[#4648d4] transition-colors truncate">
                                 {init.title}
                               </h3>
-                              <span className={cn('px-2 py-0.5 text-[10px] font-semibold rounded-full shrink-0', STATUS_PILL[init.status] || STATUS_PILL.active)}>
+                              <span className={cn('px-2 py-0.5 text-[11px] font-semibold rounded-full shrink-0', STATUS_PILL[init.status] || STATUS_PILL.active)}>
                                 {STATUS_LABEL[init.status] || init.status}
                               </span>
                               {isOverdue && (
-                                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-[#fef2f2] text-[#dc2626] shrink-0">Overdue</span>
+                                <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#fef2f2] text-[#dc2626] shrink-0">Overdue</span>
                               )}
                             </div>
                             <div className="flex items-start gap-2 shrink-0">
@@ -229,13 +229,13 @@ export default function InitiativesPage() {
                                     <button
                                       onClick={() => handleDeleteInitiative(init.id)}
                                       disabled={deleting}
-                                      className="px-3 py-2 min-h-[36px] text-[11px] font-semibold bg-[#dc2626] text-white rounded-md hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+                                      className="px-3 py-2 min-h-[36px] text-[12px] font-semibold bg-[#dc2626] text-white rounded-md hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
                                     >
                                       {deleting ? '...' : 'Delete'}
                                     </button>
                                     <button
                                       onClick={() => setConfirmDeleteId(null)}
-                                      className="px-3 py-2 min-h-[36px] text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] rounded-md hover:bg-[#e5e7eb] transition-colors"
+                                      className="px-3 py-2 min-h-[36px] text-[12px] font-semibold bg-[#f3f4f6] text-[#6b7280] rounded-md hover:bg-[#e5e7eb] transition-colors"
                                     >
                                       Cancel
                                     </button>
@@ -246,13 +246,13 @@ export default function InitiativesPage() {
                                     className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2]"
                                     title="Delete initiative"
                                   >
-                                    <span className="material-symbols-outlined text-[15px]">delete</span>
+                                    <span className="material-symbols-outlined text-[16px]">delete</span>
                                   </button>
                                 )
                               )}
                               <div className="text-right">
-                                <span className="text-[16px] font-bold tabular-nums text-[#111827]">{init.progress || 0}%</span>
-                                <p className="text-[10px] text-[#9ca3af] tabular-nums">{totalA} action{totalA !== 1 ? 's' : ''}</p>
+                                <span className="text-[18px] font-bold tabular-nums text-[#111827]">{init.progress || 0}%</span>
+                                <p className="text-[11px] text-[#9ca3af] tabular-nums">{totalA} action{totalA !== 1 ? 's' : ''}</p>
                               </div>
                             </div>
                           </div>
@@ -265,29 +265,29 @@ export default function InitiativesPage() {
                           {/* Action counts */}
                           {totalA > 0 && (
                             <div className="flex items-center gap-2 mb-2.5">
-                              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f0fdf4] text-[#16a34a] text-[11px] font-semibold">
-                                <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f0fdf4] text-[#16a34a] text-[12px] font-semibold">
+                                <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                                 {doneA} done
                               </span>
                               {openCount > 0 && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f3f4f6] text-[#6b7280] text-[11px] font-semibold">
-                                  <span className="material-symbols-outlined text-[11px]">radio_button_unchecked</span>
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f3f4f6] text-[#6b7280] text-[12px] font-semibold">
+                                  <span className="material-symbols-outlined text-[12px]">radio_button_unchecked</span>
                                   {openCount} open
                                 </span>
                               )}
                             </div>
                           )}
                           {totalA === 0 && (
-                            <p className="text-[11px] text-[#d1d5db] mb-2.5">No actions yet</p>
+                            <p className="text-[12px] text-[#d1d5db] mb-2.5">No actions yet</p>
                           )}
 
                           {/* Meta row */}
-                          <div className="flex items-center gap-4 text-[11px] text-[#9ca3af] flex-wrap">
+                          <div className="flex items-center gap-4 text-[12px] text-[#9ca3af] flex-wrap">
                             <span className="font-medium text-[#6b7280]">{init.creator?.name}</span>
                             {(init.members?.length || 0) > 0 && (
                               <span>{init.members!.length} member{init.members!.length !== 1 ? 's' : ''}</span>
                             )}
-                            <span className="text-[10px] font-medium text-[#9ca3af]">{PRIORITY_LABEL[init.priority] || 'Medium'} priority</span>
+                            <span className="text-[11px] font-medium text-[#9ca3af]">{PRIORITY_LABEL[init.priority] || 'Medium'} priority</span>
                             {init.dueDate && (
                               <span className={cn(isOverdue ? 'text-[#dc2626] font-semibold' : '')}>
                                 {daysLeft !== null && daysLeft < 0
@@ -308,7 +308,7 @@ export default function InitiativesPage() {
                                   <span
                                     key={a.id}
                                     className={cn(
-                                      'text-[11px] px-2 py-0.5 rounded-md truncate max-w-[180px]',
+                                      'text-[12px] px-2 py-0.5 rounded-md truncate max-w-[180px]',
                                       aOD
                                         ? 'bg-[#fef2f2] text-[#dc2626]'
                                         : 'bg-[#f9fafb] text-[#6b7280]'
@@ -319,7 +319,7 @@ export default function InitiativesPage() {
                                 )
                               })}
                               {totalA - doneA > 3 && (
-                                <span className="text-[11px] text-[#9ca3af]">+{totalA - doneA - 3} more</span>
+                                <span className="text-[12px] text-[#9ca3af]">+{totalA - doneA - 3} more</span>
                               )}
                             </div>
                           )}
@@ -338,7 +338,7 @@ export default function InitiativesPage() {
             {atRiskCount > 0 && (
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
                 <div className="px-4 py-3 border-b border-[#fef2f2] bg-[#fef9f9]">
-                  <p className="text-[10px] font-semibold text-[#dc2626] uppercase tracking-widest">Needs Attention</p>
+                  <p className="text-[11px] font-semibold text-[#dc2626] uppercase tracking-widest">Needs Attention</p>
                 </div>
                 <div className="divide-y divide-[#fafafa]">
                   {initiatives.filter((i) => i.status === 'at-risk').map((init) => (
@@ -348,8 +348,8 @@ export default function InitiativesPage() {
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fef9f9] cursor-pointer transition-colors"
                     >
                       <div className="w-1.5 h-1.5 rounded-full bg-[#dc2626] shrink-0" />
-                      <p className="text-[12px] font-medium text-[#111827] flex-1 truncate">{init.title}</p>
-                      <span className="material-symbols-outlined text-[#dc2626] text-[14px]">chevron_right</span>
+                      <p className="text-[13px] font-medium text-[#111827] flex-1 truncate">{init.title}</p>
+                      <span className="material-symbols-outlined text-[#dc2626] text-[15px]">chevron_right</span>
                     </div>
                   ))}
                 </div>
@@ -359,8 +359,8 @@ export default function InitiativesPage() {
             {/* Recent Activity */}
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
               <div className="px-4 py-3 border-b border-[#f9fafb] flex items-center justify-between">
-                <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest">Recent Activity</p>
-                <span className="text-[10px] text-[#c4c4c4]">{initiatives.flatMap((i) => i.actions || []).length} actions</span>
+                <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest">Recent Activity</p>
+                <span className="text-[11px] text-[#c4c4c4]">{initiatives.flatMap((i) => i.actions || []).length} actions</span>
               </div>
               {(() => {
                 const items = initiatives
@@ -371,7 +371,7 @@ export default function InitiativesPage() {
                 if (items.length === 0) return (
                   <div className="px-4 py-8 flex flex-col items-center gap-2">
                     <span className="material-symbols-outlined text-[28px] text-[#e5e7eb]" style={{ fontVariationSettings: "'FILL' 1" }}>pending_actions</span>
-                    <p className="text-[11px] text-[#9ca3af]">No activity yet</p>
+                    <p className="text-[12px] text-[#9ca3af]">No activity yet</p>
                   </div>
                 )
                 return (
@@ -390,19 +390,19 @@ export default function InitiativesPage() {
                             <div className="relative shrink-0 z-10">
                               {person?.avatar
                                 ? <img src={person.avatar} alt={person.name} className="w-7 h-7 rounded-full object-cover ring-2 ring-white" />
-                                : <div className="w-7 h-7 rounded-full bg-[#ede9fe] text-[#4648d4] text-[9px] font-bold flex items-center justify-center ring-2 ring-white">{initials}</div>
+                                : <div className="w-7 h-7 rounded-full bg-[#ede9fe] text-[#4648d4] text-[10px] font-bold flex items-center justify-center ring-2 ring-white">{initials}</div>
                               }
-                              <span className="material-symbols-outlined absolute -bottom-0.5 -right-0.5 text-[11px] bg-white rounded-full"
+                              <span className="material-symbols-outlined absolute -bottom-0.5 -right-0.5 text-[12px] bg-white rounded-full"
                                 style={{ color: iconColorMap[a.status] || '#d1d5db', fontVariationSettings: "'FILL' 1" }}
                               >{iconMap[a.status] || 'radio_button_unchecked'}</span>
                             </div>
                             <div className="flex-1 min-w-0 pt-0.5">
-                              <p className="text-[11px] text-[#111827] leading-snug">
+                              <p className="text-[12px] text-[#111827] leading-snug">
                                 <span className="font-semibold">{person?.name?.split(' ')[0] || 'Someone'}</span>
                                 {' '}<span className="text-[#6b7280]">{isDone ? 'completed' : a.status === 'in-progress' ? 'is working on' : a.status === 'in-review' ? 'put in review' : 'added'}</span>
                               </p>
-                              <p className="text-[11px] font-medium text-[#374151] line-clamp-1 mt-0.5 group-hover:text-[#4648d4] transition-colors">{a.title}</p>
-                              <p className="text-[10px] text-[#c4c4c4] mt-0.5">{a.initiativeTitle}</p>
+                              <p className="text-[12px] font-medium text-[#374151] line-clamp-1 mt-0.5 group-hover:text-[#4648d4] transition-colors">{a.title}</p>
+                              <p className="text-[11px] text-[#c4c4c4] mt-0.5">{a.initiativeTitle}</p>
                             </div>
                             <div className={cn('w-1.5 h-1.5 rounded-full mt-2 shrink-0',
                               a.priority === 'urgent' ? 'bg-[#dc2626]' : a.priority === 'high' ? 'bg-[#4648d4]' : a.priority === 'medium' ? 'bg-[#2563eb]' : 'bg-[#e5e7eb]'
@@ -418,7 +418,7 @@ export default function InitiativesPage() {
 
             {/* Summary */}
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3.5">Summary</p>
+              <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3.5">Summary</p>
               <div className="space-y-3">
                 {[
                   { label: 'Total', val: initiatives.length, color: '#111827' },
@@ -427,8 +427,8 @@ export default function InitiativesPage() {
                   { label: 'Completed', val: initiatives.filter((i) => i.status === 'completed').length, color: '#2563eb' },
                 ].map(({ label, val, color }) => (
                   <div key={label} className="flex items-center justify-between">
-                    <span className="text-[12px] text-[#6b7280]">{label}</span>
-                    <span className="text-[12px] font-semibold tabular-nums" style={{ color }}>{val}</span>
+                    <span className="text-[13px] text-[#6b7280]">{label}</span>
+                    <span className="text-[13px] font-semibold tabular-nums" style={{ color }}>{val}</span>
                   </div>
                 ))}
               </div>
@@ -446,26 +446,26 @@ export default function InitiativesPage() {
         >
           <div className="bg-white w-full sm:w-[440px] h-full shadow-2xl flex flex-col" style={{ borderLeft: '1px solid #f0f0f0' }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid #f3f4f6' }}>
+            <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#4648d4] text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
+                  <span className="material-symbols-outlined text-[#4648d4] text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
                 </div>
                 <div>
-                  <h2 className="text-[14px] font-semibold text-[#111827] leading-none">New Initiative</h2>
-                  <p className="text-[11px] text-[#9ca3af] mt-0.5">Define a strategic goal</p>
+                  <h2 className="text-[15px] font-semibold text-[#111827] leading-none">New Initiative</h2>
+                  <p className="text-[12px] text-[#9ca3af] mt-0.5">Define a strategic goal</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowCreate(false)}
                 className="w-7 h-7 flex items-center justify-center text-[#9ca3af] hover:text-[#111827] hover:bg-[#f3f4f6] rounded-lg transition-colors"
               >
-                <span className="material-symbols-outlined text-[16px]">close</span>
+                <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
 
             <form onSubmit={handleCreate} className="flex-1 overflow-y-auto flex flex-col">
-              <div className="p-6 space-y-5 flex-1">
+              <div className="p-4 space-y-5 flex-1">
                 {/* Bare title input */}
                 <input
                   autoFocus
@@ -473,7 +473,7 @@ export default function InitiativesPage() {
                   placeholder="Initiative title..."
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  className="w-full text-[15px] font-semibold text-[#111827] placeholder:text-[#d1d5db] placeholder:font-normal focus:outline-none bg-transparent border-none"
+                  className="w-full text-[16px] font-semibold text-[#111827] placeholder:text-[#d1d5db] placeholder:font-normal focus:outline-none bg-transparent border-none"
                 />
 
                 {/* Description */}
@@ -482,7 +482,7 @@ export default function InitiativesPage() {
                   placeholder="What does success look like?"
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full text-[13px] text-[#374151] placeholder:text-[#d1d5db] focus:outline-none bg-transparent border-none resize-none leading-relaxed"
+                  className="w-full text-[14px] text-[#374151] placeholder:text-[#d1d5db] focus:outline-none bg-transparent border-none resize-none leading-relaxed"
                 />
 
                 <div className="h-px bg-[#f3f4f6]" />
@@ -491,13 +491,13 @@ export default function InitiativesPage() {
                 <div className="space-y-1">
                   {/* Priority — pill buttons */}
                   <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
-                    <span className="material-symbols-outlined text-[15px] text-[#9ca3af]">flag</span>
-                    <span className="text-[11px] font-medium text-[#9ca3af] w-20 shrink-0">Priority</span>
+                    <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">flag</span>
+                    <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Priority</span>
                     <div className="flex gap-1 flex-1">
                       {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
                         <button key={p} type="button"
                           onClick={() => setForm((f) => ({ ...f, priority: p }))}
-                          className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold capitalize transition-all border', form.priority === p
+                          className={cn('px-2 py-0.5 rounded-md text-[12px] font-semibold capitalize transition-all border', form.priority === p
                             ? p === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca]'
                               : p === 'high' ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]'
                               : p === 'medium' ? 'bg-[#eff6ff] text-[#2563eb] border-[#bfdbfe]'
@@ -511,8 +511,8 @@ export default function InitiativesPage() {
 
                   {/* Status — pill buttons */}
                   <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
-                    <span className="material-symbols-outlined text-[15px] text-[#9ca3af]">radio_button_checked</span>
-                    <span className="text-[11px] font-medium text-[#9ca3af] w-20 shrink-0">Status</span>
+                    <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">radio_button_checked</span>
+                    <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Status</span>
                     <div className="flex gap-1 flex-1">
                       {[
                         { value: 'active', label: 'Active', cls: 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]' },
@@ -521,7 +521,7 @@ export default function InitiativesPage() {
                       ].map(({ value, label, cls }) => (
                         <button key={value} type="button"
                           onClick={() => setForm((f) => ({ ...f, status: value }))}
-                          className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all border', form.status === value ? cls : 'bg-transparent text-[#9ca3af] border-[#f0f0f0] hover:border-[#e5e7eb] hover:text-[#6b7280]')}
+                          className={cn('px-2 py-0.5 rounded-md text-[12px] font-semibold transition-all border', form.status === value ? cls : 'bg-transparent text-[#9ca3af] border-[#f0f0f0] hover:border-[#e5e7eb] hover:text-[#6b7280]')}
                         >{label}</button>
                       ))}
                     </div>
@@ -529,19 +529,19 @@ export default function InitiativesPage() {
 
                   {/* Due Date — custom styled trigger */}
                   <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
-                    <span className="material-symbols-outlined text-[15px] text-[#9ca3af]">event</span>
-                    <span className="text-[11px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
+                    <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
+                    <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
                       <button
                         type="button"
                         onClick={() => createDateRef.current?.showPicker?.()}
-                        className="text-[12px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors"
+                        className="text-[13px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors"
                       >
                         {form.dueDate ? format(new Date(form.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
                       </button>
                       {form.dueDate && (
                         <button type="button" onClick={() => setForm((f) => ({ ...f, dueDate: '' }))}
-                          className="text-[#9ca3af] hover:text-[#dc2626] text-[13px] leading-none"
+                          className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none"
                         >×</button>
                       )}
                       <input
@@ -557,18 +557,18 @@ export default function InitiativesPage() {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 flex gap-2.5" style={{ borderTop: '1px solid #f3f4f6' }}>
+              <div className="px-4 py-4 flex gap-2.5" style={{ borderTop: '1px solid #f3f4f6' }}>
                 <button
                   type="button"
                   onClick={() => setShowCreate(false)}
-                  className="flex-1 h-9 text-[12px] font-semibold text-[#6b7280] border border-[#e5e7eb] rounded-lg hover:bg-[#f9fafb] transition-colors"
+                  className="flex-1 h-9 text-[13px] font-semibold text-[#6b7280] border border-[#e5e7eb] rounded-lg hover:bg-[#f9fafb] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving || !form.title.trim()}
-                  className="flex-1 h-9 text-[12px] font-semibold bg-[#4648d4] hover:bg-[#3730a3] text-white rounded-lg transition-colors disabled:opacity-40"
+                  className="flex-1 h-9 text-[13px] font-semibold bg-[#4648d4] hover:bg-[#3730a3] text-white rounded-lg transition-colors disabled:opacity-40"
                 >
                   {saving ? 'Creating...' : 'Create Initiative'}
                 </button>

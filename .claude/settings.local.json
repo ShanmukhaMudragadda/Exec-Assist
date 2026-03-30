@@ -73,7 +73,18 @@
       "Bash(npm install:*)",
       "Bash(ls:*)",
       "Bash(node -e \"require\\(''''sharp''''\\)\")",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(npx playwright:*)",
+      "Bash(wait)",
+      "Bash(grep -r \"app.use.*api\\\\|router.*api\\\\|prefix.*api\" /c/Users/shanmukha.mudragadda/Desktop/Executive-Management/apps/backend/src/ --include=*.ts -l)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(sed -i 's/document\\\\.documentElement\\\\.clientWidth/window.innerWidth/g' \"$f\")",
+      "Bash(done)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /PID 22024 /F)",
+      "Bash(cmd /c \"taskkill /PID 22024 /F\")",
+      "Bash(grep \"failed$\\\\|failed \")"
     ]
   }
 }

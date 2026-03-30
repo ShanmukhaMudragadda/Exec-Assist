@@ -6,10 +6,15 @@ import { authApi } from '@/services/api'
 export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { setAuth } = useAuthStore()
+  const { setAuth, isAuthenticated } = useAuthStore()
   const [error, setError] = useState('')
 
   const redirect = searchParams.get('redirect') || '/dashboard'
+
+  // If already authenticated, skip login
+  useEffect(() => {
+    if (isAuthenticated) navigate(redirect, { replace: true })
+  }, [isAuthenticated])
 
   useEffect(() => {
     const script = document.createElement('script')
@@ -41,8 +46,10 @@ export default function LoginPage() {
       const { token, user } = res.data
       setAuth(user, token)
       navigate(redirect, { replace: true })
-    } catch {
-      setError('Google sign-in failed. Please try again.')
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Unknown error'
+      console.error('[Google Login] failed:', msg, err)
+      setError(`Google sign-in failed: ${msg}`)
     }
   }
 

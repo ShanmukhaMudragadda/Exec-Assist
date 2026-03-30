@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import AppLayout from '@/components/layout/AppLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,10 +10,11 @@ import { Badge } from '@/components/ui/badge'
 import { usersApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
-import { User, Bell, Shield, Save, Camera } from 'lucide-react'
+import { User, Bell, Shield, Save, Camera, LogOut } from 'lucide-react'
 
 export default function ProfilePage() {
-  const { user, setUser } = useAuthStore()
+  const { user, setUser, logout } = useAuthStore()
+  const navigate = useNavigate()
   const [name, setName] = useState(user?.name || '')
   const [avatar, setAvatar] = useState<string | null>(user?.avatar || null)
   const [emailNotifications, setEmailNotifications] = useState(user?.emailNotifications ?? true)
@@ -234,6 +236,19 @@ export default function ProfilePage() {
                   Save Changes
                 </>
               )}
+            </Button>
+          </div>
+
+          {/* Sign out — visible on mobile where sidebar sign-out is hidden */}
+          <div className="md:hidden pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2 text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => { logout(); navigate('/auth/login') }}
+            >
+              <LogOut className="w-4 h-4" />
+              Sign out
             </Button>
           </div>
         </form>

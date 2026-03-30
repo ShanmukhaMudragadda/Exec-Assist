@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
-import { usersApi } from './services/api'
+import { authApi, usersApi } from './services/api'
 import LoginPage from './pages/auth/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
@@ -24,8 +24,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function TimezoneSync() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const setUser = useAuthStore((s) => s.setUser)
   useEffect(() => {
     if (!isAuthenticated) return
+    // Refresh user data from backend on every app load (picks up avatar, role changes, etc.)
+    authApi.me().then((res) => setUser(res.data.user)).catch(() => {/* silent */})
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     usersApi.updateProfile({ timezone: tz }).catch(() => {/* silent */})
   }, [isAuthenticated])

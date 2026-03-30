@@ -303,17 +303,17 @@ export default function UploadDataPage() {
 
   return (
     <AppLayout>
-      <div className="bg-[#f9fafb] min-h-screen p-7">
+      <div className="bg-[#f9fafb] min-h-screen p-3 md:p-7">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-[20px] font-bold text-[#111827] tracking-tight">Import & Generate</h1>
-          <p className="text-[13px] text-[#6b7280] mt-0.5">
+          <h1 className="text-[22px] font-bold text-[#111827] tracking-tight">Import & Generate</h1>
+          <p className="text-[14px] text-[#6b7280] mt-0.5">
             Extract actions from transcripts, spreadsheets, or voice recordings.
           </p>
         </div>
 
         {/* Mode selector */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6">
           {MODES.map((m) => {
             const isActive = mode === m.id
             return (
@@ -330,29 +330,29 @@ export default function UploadDataPage() {
                 <span className={cn('material-symbols-outlined text-[18px]', isActive ? 'text-[#4648d4]' : 'text-[#9ca3af]')}>{m.icon}</span>
                 <div>
                   <p className={cn('text-xs font-bold', isActive ? 'text-[#4648d4]' : 'text-[#374151]')}>{m.label}</p>
-                  <p className="text-[10px] text-[#9ca3af] hidden sm:block">{m.subtitle}</p>
+                  <p className="text-[11px] text-[#9ca3af] hidden sm:block">{m.subtitle}</p>
                 </div>
-                {isActive && <span className="material-symbols-outlined text-[#4648d4] text-[16px] ml-1">check_circle</span>}
+                {isActive && <span className="material-symbols-outlined text-[#4648d4] text-[18px] ml-1">check_circle</span>}
               </button>
             )
           })}
         </div>
 
         {!showReview ? (
-          <div className="grid grid-cols-12 gap-5">
+          <div className="grid grid-cols-12 gap-3.5">
             {/* LEFT — Input */}
-            <div className="col-span-12 lg:col-span-7 bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-5">
+            <div className="col-span-12 lg:col-span-7 bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-5">
               {/* TRANSCRIPT MODE */}
               {mode === 'transcript' && (
                 <>
                   <div>
-                    <label className="block text-[10px] font-bold text-[#9ca3af] uppercase tracking-widest mb-1.5">
+                    <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-1.5">
                       Reference Label
                     </label>
                     <input
                       type="text" placeholder="e.g. Board Meeting — March 2026"
                       value={projectRef} onChange={(e) => setProjectRef(e.target.value)}
-                      className="w-full h-9 px-3 bg-white border border-[#e5e7eb] rounded-lg text-[13px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none transition-all placeholder:text-[#c4c4c4]"
+                      className="w-full h-9 px-3 bg-white border border-[#e5e7eb] rounded-lg text-[14px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none transition-all placeholder:text-[#c4c4c4]"
                     />
                   </div>
 
@@ -369,25 +369,25 @@ export default function UploadDataPage() {
                   >
                     <span className="material-symbols-outlined text-3xl text-[#9ca3af] block mb-2">cloud_upload</span>
                     <p className="text-sm font-semibold text-[#374151]">Drop file here or <span className="text-[#4648d4]">browse</span></p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">PDF · DOCX · TXT (max 50MB)</p>
+                    <p className="text-[12px] text-[#9ca3af] mt-1">PDF · DOCX · TXT (max 50MB)</p>
                     <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" />
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-[#e5e7eb]" />
-                    <span className="text-[11px] text-[#9ca3af] font-bold uppercase tracking-widest">or paste text</span>
+                    <span className="text-[12px] text-[#9ca3af] font-bold uppercase tracking-widest">or paste text</span>
                     <div className="flex-1 h-px bg-[#e5e7eb]" />
                   </div>
 
                   <textarea
                     rows={8} placeholder="Paste your meeting transcript or notes here..."
                     value={transcript} onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full bg-white border border-[#e5e7eb] rounded-xl px-4 py-3 text-[13px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none resize-none transition-all placeholder:text-[#c4c4c4]"
+                    className="w-full bg-white border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none resize-none transition-all placeholder:text-[#c4c4c4]"
                   />
 
                   {!initiativeId && (
                     <div className="p-3 bg-[#f5f3ff] border border-[#ede9fe] rounded-lg text-xs text-[#4648d4] font-medium flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[16px]">info</span>
+                      <span className="material-symbols-outlined text-[18px]">info</span>
                       No initiative selected — actions will be saved to Command Center.
                     </div>
                   )}
@@ -415,7 +415,7 @@ export default function UploadDataPage() {
                   >
                     <span className="material-symbols-outlined text-4xl text-[#9ca3af] block mb-3">table_chart</span>
                     <p className="text-sm font-semibold text-[#374151]">Upload Spreadsheet</p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">CSV · XLSX supported</p>
+                    <p className="text-[12px] text-[#9ca3af] mt-1">CSV · XLSX supported</p>
                     <input ref={sheetsFileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" />
                   </div>
                   <div className="p-3 bg-[#f7f9fb] border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-lg text-xs text-[#6b7280]">
@@ -437,25 +437,25 @@ export default function UploadDataPage() {
                     recording ? 'border-[#4648d4]/30 bg-[#f5f3ff]' : 'border-[#e5e7eb] bg-[#f9fafb]'
                   )}>
                     {/* Top bar: status + timer */}
-                    <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                    <div className="flex items-center justify-between px-4 pt-4 pb-2">
                       <div className="flex items-center gap-2">
                         <div className={cn(
                           'w-2 h-2 rounded-full transition-all',
                           recording ? 'bg-[#dc2626] animate-pulse' : 'bg-[#d1d5db]'
                         )} />
-                        <span className={cn('text-[11px] font-bold uppercase tracking-widest', recording ? 'text-[#4648d4]' : 'text-[#9ca3af]')}>
+                        <span className={cn('text-[12px] font-bold uppercase tracking-widest', recording ? 'text-[#4648d4]' : 'text-[#9ca3af]')}>
                           {recording ? 'Recording' : 'Idle'}
                         </span>
                       </div>
                       {recording && (
-                        <span className="text-[12px] font-mono font-bold text-[#4648d4] tabular-nums">
+                        <span className="text-[13px] font-mono font-bold text-[#4648d4] tabular-nums">
                           {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
                         </span>
                       )}
                     </div>
 
                     {/* Waveform canvas */}
-                    <div className="px-5 pb-2">
+                    <div className="px-4 pb-2">
                       <canvas
                         ref={canvasRef}
                         className="w-full"
@@ -464,11 +464,11 @@ export default function UploadDataPage() {
                     </div>
 
                     {/* Mic button row */}
-                    <div className="flex items-center justify-center gap-4 px-5 pb-5 pt-1">
+                    <div className="flex items-center justify-center gap-4 px-4 pb-5 pt-1">
                       <button
                         onClick={recording ? stopRecording : startRecording}
                         className={cn(
-                          'flex items-center gap-2.5 px-7 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm',
+                          'flex items-center gap-2.5 px-7 rounded-xl font-bold text-sm transition-all shadow-sm min-h-11',
                           recording
                             ? 'bg-white text-[#dc2626] border border-[#fecaca] hover:bg-[#fef2f2]'
                             : 'bg-[#4648d4] text-white hover:bg-[#3730a3]'
@@ -492,12 +492,12 @@ export default function UploadDataPage() {
                   {(transcript || interimText || recording) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-widest">Live Transcript</label>
+                        <label className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest">Live Transcript</label>
                         {transcript && (
-                          <button onClick={() => setTranscript('')} className="text-[10px] text-[#9ca3af] hover:text-[#dc2626] transition-colors">Clear</button>
+                          <button onClick={() => setTranscript('')} className="text-[11px] text-[#9ca3af] hover:text-[#dc2626] transition-colors">Clear</button>
                         )}
                       </div>
-                      <div className="min-h-[120px] max-h-[240px] overflow-y-auto bg-[#f9fafb] border border-[#e5e7eb] rounded-xl px-4 py-3 text-[13px] leading-relaxed">
+                      <div className="min-h-[120px] max-h-[240px] overflow-y-auto bg-[#f9fafb] border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] leading-relaxed">
                         <span className="text-[#111827]">{transcript}</span>
                         {interimText && <span className="text-[#9ca3af] italic">{interimText}</span>}
                         {recording && !transcript && !interimText && (
@@ -529,7 +529,7 @@ export default function UploadDataPage() {
             <div className="col-span-12 lg:col-span-5 space-y-4">
               {/* How it works */}
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-                <h3 className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-3">How It Works</h3>
+                <h3 className="text-[12px] font-bold text-[#9ca3af] uppercase tracking-widest mb-3">How It Works</h3>
                 <div className="space-y-3">
                   {[
                     { num: '1', text: 'Paste or upload your transcript' },
@@ -538,7 +538,7 @@ export default function UploadDataPage() {
                     { num: '4', text: 'Actions are added to your initiative' },
                   ].map(({ num, text }) => (
                     <div key={num} className="flex items-center gap-3">
-                      <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#4648d4] text-[11px] font-black flex items-center justify-center shrink-0">{num}</div>
+                      <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#4648d4] text-[12px] font-black flex items-center justify-center shrink-0">{num}</div>
                       <p className="text-xs text-[#374151]">{text}</p>
                     </div>
                   ))}
@@ -548,22 +548,22 @@ export default function UploadDataPage() {
               {/* AI Settings — fully functional */}
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
                 <div className="px-4 py-3 border-b border-[#f2f4f6] flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-[#4648d4]">auto_awesome</span>
-                  <h3 className="text-[11px] font-bold text-[#111827]">AI Generation Settings</h3>
+                  <span className="material-symbols-outlined text-[18px] text-[#4648d4]">auto_awesome</span>
+                  <h3 className="text-[12px] font-bold text-[#111827]">AI Generation Settings</h3>
                 </div>
                 <div className="divide-y divide-[#f9fafb]">
                   {AI_SETTINGS_CONFIG.map(({ key, label, desc }) => (
                     <div key={key} className="flex items-center justify-between px-4 py-3">
                       <div>
                         <p className="text-xs font-semibold text-[#111827]">{label}</p>
-                        <p className="text-[11px] text-[#9ca3af]">{desc}</p>
+                        <p className="text-[12px] text-[#9ca3af]">{desc}</p>
                       </div>
                       <Toggle on={aiSettings[key]} onToggle={() => toggleSetting(key)} />
                     </div>
                   ))}
                 </div>
                 <div className="px-4 py-3 bg-[#f7f9fb] border-t border-[#e5e7eb]">
-                  <p className="text-[11px] text-[#9ca3af]">
+                  <p className="text-[12px] text-[#9ca3af]">
                     These settings control how the AI interprets your transcript. They are sent with each generation request.
                   </p>
                 </div>
@@ -572,9 +572,9 @@ export default function UploadDataPage() {
           </div>
         ) : (
           /* Review screen */
-          <div className="grid grid-cols-12 gap-5">
+          <div className="grid grid-cols-12 gap-3.5">
             <div className="col-span-12 lg:col-span-8 bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#e5e7eb] flex justify-between items-center">
+              <div className="px-4 py-4 border-b border-[#e5e7eb] flex justify-between items-center">
                 <div>
                   <h2 className="text-sm font-bold text-[#111827]">Review Generated Actions</h2>
                   <p className="text-xs text-[#9ca3af] mt-0.5">{generatedActions.length} actions extracted from transcript</p>
@@ -585,8 +585,8 @@ export default function UploadDataPage() {
               </div>
               <div className="divide-y divide-[#f9fafb]">
                 {generatedActions.map((action, i) => (
-                  <div key={i} className="flex items-start gap-3 px-5 py-4">
-                    <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#4648d4] text-[11px] font-black flex items-center justify-center shrink-0 mt-0.5">
+                  <div key={i} className="flex items-start gap-3 px-4 py-4">
+                    <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#4648d4] text-[12px] font-black flex items-center justify-center shrink-0 mt-0.5">
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -594,20 +594,20 @@ export default function UploadDataPage() {
                       {action.description && <p className="text-xs text-[#6b7280] mt-0.5 line-clamp-2">{action.description}</p>}
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         {action.priority && (
-                          <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', action.priority === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626]' : 'bg-[#ede9fe] text-[#4648d4]')}>
+                          <span className={cn('text-[11px] font-bold px-1.5 py-0.5 rounded-full', action.priority === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626]' : 'bg-[#ede9fe] text-[#4648d4]')}>
                             {action.priority}
                           </span>
                         )}
-                        {action.dueDate && <span className="text-[10px] text-[#9ca3af]">Due: {action.dueDate}</span>}
+                        {action.dueDate && <span className="text-[11px] text-[#9ca3af]">Due: {action.dueDate}</span>}
                         {action.tags?.length > 0 && action.tags.map((tag: string, ti: number) => (
-                          <span key={ti} className="text-[10px] bg-[#f2f4f6] text-[#6b7280] px-1.5 py-0.5 rounded-full">#{tag}</span>
+                          <span key={ti} className="text-[11px] bg-[#f2f4f6] text-[#6b7280] px-1.5 py-0.5 rounded-full">#{tag}</span>
                         ))}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="px-5 py-4 border-t border-[#e5e7eb] flex gap-3">
+              <div className="px-4 py-4 border-t border-[#e5e7eb] flex gap-3">
                 <button onClick={() => setGeneratedActions([])} className="flex-1 py-2.5 bg-[#f2f4f6] text-[#374151] font-bold rounded-xl hover:bg-[#e5e7eb] transition-colors text-sm">
                   Re-generate
                 </button>
@@ -621,7 +621,7 @@ export default function UploadDataPage() {
 
             <div className="col-span-12 lg:col-span-4 space-y-4">
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-                <h3 className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-3">Summary</h3>
+                <h3 className="text-[12px] font-bold text-[#9ca3af] uppercase tracking-widest mb-3">Summary</h3>
                 <div className="space-y-2">
                   {[
                     { label: 'Total actions', val: generatedActions.length },
@@ -638,7 +638,7 @@ export default function UploadDataPage() {
                 </div>
               </div>
               <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-                <h3 className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">AI Settings Used</h3>
+                <h3 className="text-[12px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">AI Settings Used</h3>
                 <div className="space-y-1.5">
                   {AI_SETTINGS_CONFIG.map(({ key, label }) => (
                     <div key={key} className="flex items-center justify-between text-xs">
