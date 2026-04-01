@@ -394,6 +394,8 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const cursor = req.query.cursor as string | undefined;
+    const filter = req.query.filter as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 100);
 
     // All initiatives the user owns or is a member of
@@ -408,7 +410,9 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
     });
     const initiativeIds = userInitiatives.map((i) => i.id);
 
-    const actionWhere = {
+    const now = new Date();
+
+    const accessCondition = {
       OR: [
         { assigneeId: userId },
         { createdBy: userId },
@@ -416,9 +420,32 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
       ],
     };
 
-    const [actions, total] = await Promise.all([
+    const filterCondition =
+      filter === 'open'      ? { status: { notIn: ['completed'] } } :
+      filter === 'completed' ? { status: 'completed' as const } :
+      filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
+      null;
+
+    const searchCondition = search ? {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' as const } },
+        { description: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : null;
+
+    // Base scope for counts: access + search (no filter) — so all tabs show accurate numbers
+    const baseClauses: object[] = [accessCondition];
+    if (searchCondition) baseClauses.push(searchCondition);
+    const baseWhere = baseClauses.length === 1 ? baseClauses[0] : { AND: baseClauses };
+
+    // Filtered scope for the actual action list
+    const andClauses: object[] = [...baseClauses];
+    if (filterCondition) andClauses.push(filterCondition);
+    const actionWhere = andClauses.length === 1 ? andClauses[0] : { AND: andClauses };
+
+    const [actions, counts] = await Promise.all([
       prisma.action.findMany({
-        where: actionWhere,
+        where: actionWhere as any,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         include: {
           initiative: { select: { id: true, title: true, status: true } },
@@ -429,20 +456,26 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
         orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
         take: limit + 1,
       }),
-      prisma.action.count({ where: actionWhere }),
+      Promise.all([
+        prisma.action.count({ where: baseWhere as any }),
+        prisma.action.count({ where: { AND: [baseWhere, { status: { notIn: ['completed'] } }] } as any }),
+        prisma.action.count({ where: { AND: [baseWhere, { dueDate: { lt: now }, status: { notIn: ['completed'] } }] } as any }),
+        prisma.action.count({ where: { AND: [baseWhere, { status: 'completed' }] } as any }),
+      ]),
     ]);
+
+    const [allCount, openCount, overdueCount, completedCount] = counts;
+    const filteredTotal = filterCondition
+      ? (filter === 'open' ? openCount : filter === 'overdue' ? overdueCount : completedCount)
+      : allCount;
 
     const hasMore = actions.length > limit;
     const data = hasMore ? actions.slice(0, limit) : actions;
     const nextCursor = hasMore ? data[data.length - 1].id : null;
 
-    const stats = {
-      total,
-      completed: await prisma.action.count({ where: { ...actionWhere, status: 'completed' } as any }),
-      overdue: data.filter((a) => a.dueDate && new Date(a.dueDate) < new Date() && a.status !== 'completed').length,
-    };
+    const stats = { all: allCount, open: openCount, overdue: overdueCount, completed: completedCount };
 
-    return res.json({ actions: data, meta: { total, hasMore, nextCursor }, stats });
+    return res.json({ actions: data, meta: { total: filteredTotal, hasMore, nextCursor }, stats });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });

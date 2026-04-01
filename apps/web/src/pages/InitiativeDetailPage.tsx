@@ -973,16 +973,12 @@ export default function InitiativeDetailPage() {
                     <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                     <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
-                      <div className="relative">
+                      <div className="relative flex items-center gap-2 cursor-pointer">
                         <span className="text-[13px] font-medium text-[#374151]">
                           {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
                         </span>
-                        <input
-                          type="date"
-                          value={actionForm.dueDate}
-                          onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        />
+                        <span className="material-symbols-outlined text-[16px] text-[#9ca3af] hover:text-[#4648d4] transition-colors">calendar_month</span>
+                        <input type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
                       </div>
                       {actionForm.dueDate && (
                         <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))}

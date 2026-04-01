@@ -190,16 +190,41 @@ export const listActions = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
     const cursor = req.query.cursor as string | undefined;
+    const filter = req.query.filter as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string || '25', 10), 100);
 
     const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const isMemberOnly = !canEdit(role);
-    const memberFilter = isMemberOnly ? { OR: [{ assigneeId: userId }, { createdBy: userId }] } : {};
+    const now = new Date();
+
+    const accessCondition: object = isMemberOnly
+      ? { initiativeId, OR: [{ assigneeId: userId }, { createdBy: userId }] }
+      : { initiativeId };
+
+    const filterCondition =
+      filter === 'open'      ? { status: { notIn: ['completed'] } } :
+      filter === 'completed' ? { status: 'completed' as const } :
+      filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
+      null;
+
+    const searchCondition = search ? {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' as const } },
+        { description: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : null;
+
+    const andClauses: object[] = [accessCondition];
+    if (filterCondition) andClauses.push(filterCondition);
+    if (searchCondition) andClauses.push(searchCondition);
+
+    const actionWhere = andClauses.length === 1 ? andClauses[0] : { AND: andClauses };
 
     const actions = await prisma.action.findMany({
-      where: { initiativeId, ...memberFilter },
+      where: actionWhere as any,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         assignee: { select: { id: true, name: true, avatar: true } },

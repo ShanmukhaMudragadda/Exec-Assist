@@ -566,21 +566,23 @@ export default function ActionDetailPage() {
                 <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #f9fafb' }}>
                   <span className="text-[13px] text-[#6b7280]">Due Date</span>
                   <div className="flex items-center gap-1.5">
-                    <div className="relative">
-                      <span className={cn('text-[13px] font-medium', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]', !canEdit && 'cursor-default')}>
-                        {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className={canEdit ? 'text-[#9ca3af] font-normal' : 'text-[#d1d5db] font-normal'}>No due date</span>}
+                    {canEdit ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative flex items-center gap-1.5 cursor-pointer">
+                          <span className={cn('text-[13px] font-medium', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]')}>
+                            {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className="text-[#9ca3af] font-normal">No due date</span>}
+                          </span>
+                          <span className="material-symbols-outlined text-[15px] text-[#9ca3af] hover:text-[#4648d4] transition-colors">calendar_month</span>
+                          <input type="date" value={action.dueDate ? action.dueDate.split('T')[0] : ''} onChange={(e) => handleUpdate({ dueDate: e.target.value || null })} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                        </div>
+                        {action.dueDate && (
+                          <button type="button" onClick={() => handleUpdate({ dueDate: null })} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className={cn('text-[13px] font-medium cursor-default', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]')}>
+                        {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className="text-[#d1d5db] font-normal">No due date</span>}
                       </span>
-                      {canEdit && (
-                        <input
-                          type="date"
-                          value={action.dueDate ? action.dueDate.split('T')[0] : ''}
-                          onChange={(e) => handleUpdate({ dueDate: e.target.value || null })}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        />
-                      )}
-                    </div>
-                    {action.dueDate && canEdit && (
-                      <button onClick={() => handleUpdate({ dueDate: null })} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>
                     )}
                   </div>
                 </div>

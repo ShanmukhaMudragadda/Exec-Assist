@@ -117,13 +117,6 @@ function InlineTagInput({ value, onChange, existingTags, onCreateTag }: {
   )
 }
 
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 18) return 'Good afternoon'
-  return 'Good evening'
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function CommandCenterPage() {
   const [searchParams] = useSearchParams()
@@ -136,6 +129,7 @@ export default function CommandCenterPage() {
   // UI state
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [showAddAction, setShowAddAction] = useState(false)
@@ -230,8 +224,8 @@ export default function CommandCenterPage() {
   })
 
   const { data: ccData, isLoading: ccLoading } = useQuery({
-    queryKey: ['command-center'],
-    queryFn: () => actionsApi.getCommandCenter().then((r) => r.data),
+    queryKey: ['command-center', actionFilter, debouncedSearch],
+    queryFn: () => actionsApi.getCommandCenter(undefined, actionFilter, debouncedSearch).then((r) => r.data),
     enabled: !initiativeId,
   } as any)
 
@@ -264,6 +258,20 @@ export default function CommandCenterPage() {
     setExtraActions([])
   }, [(ccData as any)?.meta?.nextCursor, initiativeId])
 
+  // Debounce search query (300ms) for CC server-side search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  // Reset CC pagination when filter or search changes
+  useEffect(() => {
+    if (initiativeId) return
+    setExtraActions([])
+    setActionsCursor(null)
+    setHasMoreActions(false)
+  }, [actionFilter, debouncedSearch, initiativeId])
+
   useEffect(() => {
     if (initiative?.settings) {
       setNotifSettings({
@@ -275,6 +283,9 @@ export default function CommandCenterPage() {
   }, [initiative?.settings])
 
   // ── Derived data ───────────────────────────────────────────────────────────
+  const ccMeta = (ccData as any)?.meta as { total: number; hasMore: boolean; nextCursor: string | null } | undefined
+  const ccStats = (ccData as any)?.stats as { all: number; open: number; overdue: number; completed: number } | undefined
+
   const baseActions: Action[] = initiativeId
     ? [...(initiative?.actions || []), ...extraActions]
     : [...((ccData as any)?.actions || []), ...extraActions]
@@ -345,25 +356,8 @@ export default function CommandCenterPage() {
     return base
   })()
 
-  // Filter actions for CC mode (same logic as initiative mode)
-  const filteredCCActions = (() => {
-    let base: Action[]
-    switch (actionFilter) {
-      case 'open': base = openActions; break
-      case 'overdue': base = overdueActions; break
-      case 'completed': base = baseActions.filter((a) => a.status === 'completed'); break
-      default: base = baseActions
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      base = base.filter((a) =>
-        a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) ||
-        a.assignee?.name.toLowerCase().includes(q) || a.initiative?.title.toLowerCase().includes(q) ||
-        a.tags?.some((at) => at.tag.name.toLowerCase().includes(q))
-      )
-    }
-    return base
-  })()
+  // CC mode: filtering and search are server-side, baseActions is already the filtered result
+  const filteredCCActions = baseActions
 
   // Group CC actions by initiative
   const grouped: Record<string, { initiative: any; actions: Action[] }> = {}
@@ -390,13 +384,13 @@ export default function CommandCenterPage() {
     setLoadingMore(true)
     try {
       if (initiativeId) {
-        const res = await actionsApi.listForInitiative(initiativeId, actionsCursor)
+        const res = await actionsApi.listForInitiative(initiativeId, actionsCursor, actionFilter, debouncedSearch)
         const { actions: more, meta } = (res.data as any)
         setExtraActions((prev) => [...prev, ...more])
         setHasMoreActions(meta.hasMore)
         setActionsCursor(meta.nextCursor)
       } else {
-        const res = await actionsApi.getCommandCenter(actionsCursor)
+        const res = await actionsApi.getCommandCenter(actionsCursor, actionFilter, debouncedSearch)
         const { actions: more, meta } = (res.data as any)
         setExtraActions((prev) => [...prev, ...more])
         setHasMoreActions(meta.hasMore)
@@ -563,7 +557,7 @@ export default function CommandCenterPage() {
   }
 
   // ── Shared: Search bar + filter row ───────────────────────────────────────
-  const SearchAndFilters = () => (
+  const searchAndFilters = (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
       <div ref={searchRef} className="relative flex-1 min-w-[180px]">
         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af] text-[16px]">search</span>
@@ -613,7 +607,19 @@ export default function CommandCenterPage() {
               : 'text-[#9ca3af] hover:text-[#374151]'
             )}
           >
-            {f === 'all' ? `All (${baseActions.length})` : f === 'open' ? `Open (${openActions.length})` : f === 'overdue' ? `Overdue (${overdueActions.length})` : `Done (${baseActions.filter((a) => a.status === 'completed').length})`}
+            {(() => {
+              const label = f === 'all' ? 'All' : f === 'open' ? 'Open' : f === 'overdue' ? 'Overdue' : 'Done'
+              if (!initiativeId) {
+                // CC mode: use server-returned stats so all tabs show counts upfront
+                const count = ccStats
+                  ? f === 'all' ? ccStats.all : f === 'open' ? ccStats.open : f === 'overdue' ? ccStats.overdue : ccStats.completed
+                  : null
+                return count != null ? `${label} (${count})` : label
+              }
+              // Initiative mode: client-side counts
+              const count = f === 'all' ? baseActions.length : f === 'open' ? openActions.length : f === 'overdue' ? overdueActions.length : baseActions.filter((a) => a.status === 'completed').length
+              return `${label} (${count})`
+            })()}
           </button>
         ))}
       </div>
@@ -826,20 +832,9 @@ export default function CommandCenterPage() {
           </div>
         ) : (
           /* Command Center mode header */
-          <div className="bg-white border-b border-[#f0f0f0] px-4 py-4">
-            <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1">{format(now, 'EEEE, MMMM d')}</p>
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h1 className="text-[20px] font-bold text-[#111827] tracking-tight">
-                  {getGreeting()}, {user?.name?.split(' ')[0] || 'there'}.
-                </h1>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[13px] text-[#6b7280]">{openActions.length} open action{openActions.length !== 1 ? 's' : ''}</span>
-                  {overdueActions.length > 0 && (
-                    <><span className="w-1 h-1 rounded-full bg-[#e5e7eb]" /><span className="text-[13px] font-semibold text-[#dc2626]">{overdueActions.length} overdue</span></>
-                  )}
-                </div>
-              </div>
+          <div className="bg-white border-b border-[#f0f0f0] px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <h1 className="text-[16px] font-bold text-[#111827] tracking-tight">Command Center</h1>
               <div ref={dropdownRef} className="relative flex shrink-0">
                 <button onClick={() => setShowAddAction(true)}
                   className="px-3 py-2 bg-[#4648d4] text-white text-[13px] font-bold rounded-l-lg flex items-center gap-1.5 hover:bg-[#3730a3] transition-colors border-r border-[#3730a3]"
@@ -878,7 +873,7 @@ export default function CommandCenterPage() {
 
           {/* LEFT — Actions */}
           <section className="col-span-12 lg:col-span-8 space-y-3">
-            <SearchAndFilters />
+            {searchAndFilters}
 
             {/* Action list */}
             {initiativeId ? (
@@ -1127,14 +1122,14 @@ export default function CommandCenterPage() {
                     <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                     <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
-                      <span className="text-[13px] font-medium text-[#374151]">
-                        {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
-                      </span>
-                      <button type="button" onClick={() => addActionDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
-                        <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                      </button>
+                      <div className="relative flex items-center gap-2 cursor-pointer">
+                        <span className="text-[13px] font-medium text-[#374151]">
+                          {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                        </span>
+                        <span className="material-symbols-outlined text-[16px] text-[#9ca3af] hover:text-[#4648d4] transition-colors">calendar_month</span>
+                        <input type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                      </div>
                       {actionForm.dueDate && <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>}
-                      <input ref={addActionDueDateRef} type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                     </div>
                   </div>
                   {/* Assignee (initiative mode only) */}
@@ -1274,16 +1269,16 @@ export default function CommandCenterPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">Due Date</label>
+                <span className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">Due Date</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-[#374151]">
-                    {editInitForm.dueDate ? format(new Date(editInitForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">No due date</span>}
-                  </span>
-                  <button type="button" onClick={() => editInitDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                  </button>
+                  <div className="relative flex items-center gap-2 cursor-pointer">
+                    <span className="text-[13px] font-medium text-[#374151]">
+                      {editInitForm.dueDate ? format(new Date(editInitForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">No due date</span>}
+                    </span>
+                    <span className="material-symbols-outlined text-[16px] text-[#9ca3af] hover:text-[#4648d4] transition-colors">calendar_month</span>
+                    <input type="date" value={editInitForm.dueDate} onChange={(e) => setEditInitForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                  </div>
                   {editInitForm.dueDate && <button type="button" onClick={() => setEditInitForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
-                  <input ref={editInitDueDateRef} type="date" value={editInitForm.dueDate} onChange={(e) => setEditInitForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                 </div>
               </div>
             </div>
@@ -1363,14 +1358,14 @@ export default function CommandCenterPage() {
                   <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                   <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                   <div className="flex items-center gap-2 flex-1">
-                    <span className="text-[13px] font-medium text-[#374151]">
-                      {editActionForm.dueDate ? format(new Date(editActionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
-                    </span>
-                    <button type="button" onClick={() => editActionDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
-                      <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                    </button>
+                    <div className="relative flex items-center gap-2 cursor-pointer">
+                      <span className="text-[13px] font-medium text-[#374151]">
+                        {editActionForm.dueDate ? format(new Date(editActionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                      </span>
+                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af] hover:text-[#4648d4] transition-colors">calendar_month</span>
+                      <input type="date" value={editActionForm.dueDate} onChange={(e) => setEditActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                    </div>
                     {editActionForm.dueDate && <button type="button" onClick={() => setEditActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
-                    <input ref={editActionDueDateRef} type="date" value={editActionForm.dueDate} onChange={(e) => setEditActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                   </div>
                 </div>
                 {/* Assignee (only when action belongs to an initiative) */}

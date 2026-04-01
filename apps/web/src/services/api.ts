@@ -110,9 +110,10 @@ export const actionsApi = {
     initiativeId: string | null;
   }>) => api.patch(`/actions/${actionId}`, data),
   delete: (actionId: string) => api.delete(`/actions/${actionId}`),
-  getCommandCenter: (cursor?: string) => api.get('/command-center', { params: cursor ? { cursor } : {} }),
-  listForInitiative: (initiativeId: string, cursor: string) =>
-    api.get(`/initiatives/${initiativeId}/actions`, { params: { cursor } }),
+  getCommandCenter: (cursor?: string, filter?: string, search?: string) =>
+    api.get('/command-center', { params: { ...(cursor ? { cursor } : {}), ...(filter && filter !== 'all' ? { filter } : {}), ...(search ? { search } : {}) } }),
+  listForInitiative: (initiativeId: string, cursor: string, filter?: string, search?: string) =>
+    api.get(`/initiatives/${initiativeId}/actions`, { params: { cursor, ...(filter && filter !== 'all' ? { filter } : {}), ...(search ? { search } : {}) } }),
   getExecutiveBrief: (refresh = false) => api.get('/executive-brief', { params: refresh ? { refresh: 'true' } : {} }),
   getDetail: (actionId: string) => api.get(`/actions/${actionId}`),
   addUpdate: (actionId: string, content: string) =>
