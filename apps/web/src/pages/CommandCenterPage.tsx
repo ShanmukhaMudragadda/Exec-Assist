@@ -439,7 +439,9 @@ export default function CommandCenterPage() {
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to generate actions'
       toast({ title: 'Generation failed', description: msg, variant: 'destructive' })
-    } finally { setGenerating(false) }
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const handleBulkSave = async () => {

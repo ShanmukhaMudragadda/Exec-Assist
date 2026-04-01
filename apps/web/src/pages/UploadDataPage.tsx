@@ -380,11 +380,17 @@ export default function UploadDataPage() {
   }
 
   const handleSave = async () => {
-    if (!generatedActions.length || !initiativeId) return
+    if (!generatedActions.length) return
     setSaving(true)
     try {
-      await actionsApi.bulkCreate(initiativeId, generatedActions)
-      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      if (initiativeId) {
+        await actionsApi.bulkCreate(initiativeId, generatedActions)
+        queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      } else {
+        await Promise.all(generatedActions.map((a) =>
+          actionsApi.createStandalone({ title: a.title, description: a.description || undefined, priority: a.priority || 'medium', dueDate: a.dueDate || null })
+        ))
+      }
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
       navigate(initiativeId ? `/command-center?initiativeId=${initiativeId}` : '/command-center')
     } finally {
@@ -717,7 +723,7 @@ export default function UploadDataPage() {
                 <button onClick={() => setGeneratedActions([])} className="flex-1 py-2.5 bg-[#f2f4f6] text-[#374151] font-bold rounded-xl hover:bg-[#e5e7eb] transition-colors text-sm">
                   Re-generate
                 </button>
-                <button onClick={handleSave} disabled={saving || !initiativeId}
+                <button onClick={handleSave} disabled={saving}
                   className="flex-1 py-2.5 bg-[#4648d4] text-white font-bold rounded-xl hover:bg-[#3730a3] transition-colors disabled:opacity-40 text-sm"
                 >
                   {saving ? 'Saving...' : `Save ${generatedActions.length} Actions`}
