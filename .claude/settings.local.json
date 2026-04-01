@@ -84,7 +84,22 @@
       "Bash(netstat -ano)",
       "Bash(taskkill /PID 22024 /F)",
       "Bash(cmd /c \"taskkill /PID 22024 /F\")",
-      "Bash(grep \"failed$\\\\|failed \")"
+      "Bash(grep \"failed$\\\\|failed \")",
+      "WebSearch",
+      "Bash(cp apps/web/src/pages/CommandCenterPage.tsx.restored apps/web/src/pages/CommandCenterPage.tsx)",
+      "Bash(rm apps/web/src/pages/CommandCenterPage.tsx.restored)",
+      "Bash(node_modules/.bin/tsc --noEmit --project apps/web/tsconfig.json)",
+      "Bash(echo \"DATABASE_URL=$DATABASE_URL\")",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(grep -r \"notification\\\\|push\\\\|PushManager\" C:Usersshanmukha.mudragaddaDesktopExecutive-Managementappswebsrc --include=*.ts --include=*.tsx --include=*.js)",
+      "Bash(grep -r \"notification\\\\|push\\\\|PushManager\" C:Usersshanmukha.mudragaddaDesktopExecutive-Managementappsbackendsrc --include=*.ts --include=*.js)",
+      "Bash(grep:*)",
+      "Bash(find C:Usersshanmukha.mudragaddaDesktopExecutive-Management -name *sw* -o -name *service*worker*)",
+      "Bash(find C:Usersshanmukha.mudragaddaDesktopExecutive-Managementappsweb -name *.js -path */dist/*)",
+      "Bash(npx web-push:*)",
+      "Bash(rm:*)",
+      "Bash(PRISMA_DISABLE_WARNINGS=true npx prisma db push)",
+      "Bash(curl:*)"
     ]
   }
 }
