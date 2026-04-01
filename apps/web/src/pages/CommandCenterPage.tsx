@@ -1030,8 +1030,8 @@ export default function CommandCenterPage() {
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
-            <form onSubmit={handleAddAction} className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+            <form onSubmit={handleAddAction} className="flex-1 flex flex-col min-h-0">
+              <div className="p-4 space-y-5 flex-1 overflow-y-auto min-h-0">
                 <input autoFocus type="text" placeholder="Action title..."
                   value={actionForm.title} onChange={(e) => setActionForm((f) => ({ ...f, title: e.target.value }))}
                   className="w-full text-[16px] font-semibold text-[#111827] placeholder:text-[#d1d5db] placeholder:font-normal focus:outline-none bg-transparent border-none"
@@ -1177,7 +1177,7 @@ export default function CommandCenterPage() {
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
-            <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
+            <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
               {generatedActions.length === 0 ? (
                 <>
                   <textarea
@@ -1193,7 +1193,7 @@ export default function CommandCenterPage() {
                 </>
               ) : (
                 <>
-                  <div className="flex-1 overflow-y-auto space-y-2">
+                  <div className="flex-1 overflow-y-auto min-h-0 space-y-2">
                     {generatedActions.map((a, i) => (
                       <div key={i} className="bg-white border border-[#f0f0f0] rounded-xl p-3">
                         {editingAiIndex === i ? (
@@ -1239,7 +1239,7 @@ export default function CommandCenterPage() {
                     <button onClick={() => { setGeneratedActions([]); setTranscript('') }}
                       className="flex-1 h-9 text-[13px] font-semibold text-[#6b7280] border border-[#e5e7eb] rounded-lg hover:bg-[#f9fafb] transition-colors"
                     >Regenerate</button>
-                    <button onClick={handleBulkSave} disabled={bulkSaving || generatedActions.length === 0}
+                    <button onClick={handleBulkSave} disabled={bulkSaving}
                       className="flex-1 h-9 text-[13px] font-semibold bg-[#4648d4] hover:bg-[#3730a3] text-white rounded-lg transition-colors disabled:opacity-40"
                     >{bulkSaving ? 'Saving...' : `Save ${generatedActions.length} Actions`}</button>
                   </div>
