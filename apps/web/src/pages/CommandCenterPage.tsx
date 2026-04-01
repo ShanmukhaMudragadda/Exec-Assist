@@ -235,6 +235,7 @@ export default function CommandCenterPage() {
   })
   const workspaceTags: Tag[] = workspaceTagsData || []
 
+
   const initiative: Initiative | null = (initData as any)?.initiative || null
   const isLoading = initiativeId ? initLoading : ccLoading
   const members: Member[] = initiative?.members || []
@@ -1132,17 +1133,19 @@ export default function CommandCenterPage() {
                       {actionForm.dueDate && <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>}
                     </div>
                   </div>
-                  {/* Assignee (initiative mode only) */}
-                  {initiativeId && initiative && (
+                  {/* Assignee */}
+                  {(initiativeId ? (initiative != null) : (user != null)) && (
                     <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
                       <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">person</span>
                       <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Assignee</span>
                       <div className="flex-1" ref={assigneeDropdownRef}>
                         {(() => {
-                          const allAssignees = [
-                            { id: initiative.creator.id, name: initiative.creator.name, avatar: initiative.creator.avatar || null, role: 'owner', dept: '' },
-                            ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name, avatar: m.user?.avatar || null, role: m.role, dept: m.department || '' })),
-                          ]
+                          const allAssignees = initiativeId && initiative
+                            ? [
+                                { id: initiative.creator.id, name: initiative.creator.name, avatar: initiative.creator.avatar || null, role: 'owner' },
+                                ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null, role: m.role })),
+                              ]
+                            : user ? [{ id: user.id, name: user.name, avatar: user.avatar || null, role: 'me' }] : []
                           const selected = allAssignees.find((a) => a.id === actionForm.assigneeId)
                           return (
                             <>
@@ -1368,13 +1371,25 @@ export default function CommandCenterPage() {
                     {editActionForm.dueDate && <button type="button" onClick={() => setEditActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
                   </div>
                 </div>
-                {/* Assignee (only when action belongs to an initiative) */}
-                {editingAction.initiative && (() => {
+                {/* Assignee */}
+                {(() => {
                   const initData2 = editingAction.initiative?.id === initiativeId ? initiative : null
-                  const assigneeList = initData2 ? [
-                    { id: initData2.creator.id, name: initData2.creator.name, avatar: initData2.creator.avatar || null },
-                    ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name, avatar: m.user?.avatar || null })),
-                  ] : []
+                  let assigneeList: { id: string; name: string }[] = []
+                  if (initData2) {
+                    assigneeList = [
+                      { id: initData2.creator.id, name: initData2.creator.name },
+                      ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '' })),
+                    ]
+                  } else {
+                    // CC mode: build from reliable sources already on the action
+                    const seen = new Map<string, string>()
+                    if (user?.id) seen.set(user.id, user.name || 'Me')
+                    if (editingAction.creator?.id && !seen.has(editingAction.creator.id))
+                      seen.set(editingAction.creator.id, editingAction.creator.name || '')
+                    if (editingAction.assignee?.id && !seen.has(editingAction.assignee.id))
+                      seen.set(editingAction.assignee.id, editingAction.assignee.name || '')
+                    assigneeList = Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
+                  }
                   if (!assigneeList.length) return null
                   return (
                     <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
