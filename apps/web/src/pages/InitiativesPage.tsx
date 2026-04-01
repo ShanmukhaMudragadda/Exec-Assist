@@ -200,7 +200,7 @@ export default function InitiativesPage() {
                   return (
                     <div
                       key={init.id}
-                      onClick={() => navigate(`/initiatives/${init.id}`)}
+                      onClick={() => navigate(`/command-center?initiativeId=${init.id}`)}
                       className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 hover:shadow-[0_2px_8px_rgba(0,0,0,0.08)] cursor-pointer group transition-all duration-150"
                     >
                       {/* Row 1: Status dot + Title + Pills + Progress */}
@@ -343,7 +343,7 @@ export default function InitiativesPage() {
                   {initiatives.filter((i) => i.status === 'at-risk').map((init) => (
                     <div
                       key={init.id}
-                      onClick={() => navigate(`/initiatives/${init.id}`)}
+                      onClick={() => navigate(`/command-center?initiativeId=${init.id}`)}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#fef9f9] cursor-pointer transition-colors"
                     >
                       <div className="w-1.5 h-1.5 rounded-full bg-[#dc2626] shrink-0" />

@@ -6,7 +6,6 @@ import LoginPage from './pages/auth/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
 import InitiativesPage from './pages/InitiativesPage'
-import InitiativeDetailPage from './pages/InitiativeDetailPage'
 import CommandCenterPage from './pages/CommandCenterPage'
 import UploadDataPage from './pages/UploadDataPage'
 import ActionDetailPage from './pages/ActionDetailPage'
@@ -48,7 +47,7 @@ export default function App() {
 
         {/* Initiatives */}
         <Route path="/initiatives" element={<PrivateRoute><InitiativesPage /></PrivateRoute>} />
-        <Route path="/initiatives/:initiativeId" element={<PrivateRoute><InitiativeDetailPage /></PrivateRoute>} />
+        <Route path="/initiatives/:initiativeId" element={<PrivateRoute><Navigate to="/command-center" replace /></PrivateRoute>} />
         <Route path="/initiatives/:initiativeId/actions/:actionId" element={<PrivateRoute><ActionDetailPage /></PrivateRoute>} />
 
         {/* Standalone action (no initiative) */}
