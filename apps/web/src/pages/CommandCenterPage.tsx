@@ -7,6 +7,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi, actionsApi, membersApi, initiativeSettingsApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
+import { toast } from '@/hooks/use-toast'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Tag { id: string; name: string; color: string }
@@ -435,6 +436,9 @@ export default function CommandCenterPage() {
         const res = await actionsApi.generateStandalone(transcript)
         setGeneratedActions((res.data as any)?.actions || [])
       }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to generate actions'
+      toast({ title: 'Generation failed', description: msg, variant: 'destructive' })
     } finally { setGenerating(false) }
   }
 
