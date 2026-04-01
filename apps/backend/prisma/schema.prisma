@@ -97,10 +97,10 @@ model Tag {
   id           String   @id @default(cuid())
   name         String
   color        String   @default("#4648d4")
-  initiativeId String
+  initiativeId String?
   createdAt    DateTime @default(now())
 
-  initiative Initiative  @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  initiative Initiative?  @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   actions    ActionTag[]
 
   @@unique([name, initiativeId])

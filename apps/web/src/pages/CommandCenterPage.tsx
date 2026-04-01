@@ -53,7 +53,6 @@ const PRIORITY_DOT: Record<string, string> = {
 }
 
 type ActionFilter = 'all' | 'open' | 'overdue' | 'completed'
-type CCFilter = 'all' | 'overdue' | 'week' | 'mine'
 type SettingsTab = 'members' | 'notifications'
 
 // ── Helper components ──────────────────────────────────────────────────────────
@@ -72,9 +71,10 @@ function Avatar({ name, avatar, size = 'sm' }: { name?: string; avatar?: string 
   return <div className={cn('rounded-full bg-[#ede9fe] text-[#4648d4] font-bold flex items-center justify-center', s)}>{initials}</div>
 }
 
-function InlineTagInput({ value, onChange, existingTags, initiativeId, onTagCreated }: {
+function InlineTagInput({ value, onChange, existingTags, onCreateTag }: {
   value: string[]; onChange: (ids: string[]) => void
-  existingTags: Tag[]; initiativeId: string; onTagCreated: () => void
+  existingTags: Tag[]
+  onCreateTag: (name: string, color: string) => Promise<Tag>
 }) {
   const [input, setInput] = useState('')
   const [creating, setCreating] = useState(false)
@@ -86,9 +86,8 @@ function InlineTagInput({ value, onChange, existingTags, initiativeId, onTagCrea
     if (!input.trim() || exact) return
     setCreating(true)
     try {
-      const res = await tagsApi.create(initiativeId, { name: input.trim(), color: tagColor })
-      const newTag: Tag = (res.data as any)?.tag
-      if (newTag) { onChange([...value, newTag.id]); onTagCreated() }
+      const newTag = await onCreateTag(input.trim(), tagColor)
+      if (newTag) onChange([...value, newTag.id])
       setInput('')
     } finally { setCreating(false) }
   }
@@ -136,7 +135,6 @@ export default function CommandCenterPage() {
 
   // UI state
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all')
-  const [ccFilter, setCcFilter] = useState<CCFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -152,6 +150,18 @@ export default function CommandCenterPage() {
   const [actionsCursor, setActionsCursor] = useState<string | null>(null)
   const [hasMoreActions, setHasMoreActions] = useState(false)
 
+  // Initiative edit state
+  const [showEditInitiative, setShowEditInitiative] = useState(false)
+  const [editInitForm, setEditInitForm] = useState({ title: '', description: '', status: 'active', priority: 'medium', dueDate: '' })
+  const [savingInitiative, setSavingInitiative] = useState(false)
+  const editInitDueDateRef = useRef<HTMLInputElement>(null)
+
+  // Action quick-edit state
+  const [editingAction, setEditingAction] = useState<Action | null>(null)
+  const [editActionForm, setEditActionForm] = useState({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '', assigneeId: '', tagIds: [] as string[] })
+  const [savingEditAction, setSavingEditAction] = useState(false)
+  const editActionDueDateRef = useRef<HTMLInputElement>(null)
+
   // Add action form
   const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeId: '', tagIds: [] as string[] })
   const [saving, setSaving] = useState(false)
@@ -160,6 +170,7 @@ export default function CommandCenterPage() {
   const assigneeDropdownRef = useRef<HTMLDivElement>(null)
   const assigneeBtnRef = useRef<HTMLButtonElement>(null)
   const assigneePortalRef = useRef<HTMLDivElement>(null)
+  const addActionDueDateRef = useRef<HTMLInputElement>(null)
 
   // AI form
   const [transcript, setTranscript] = useState('')
@@ -188,10 +199,11 @@ export default function CommandCenterPage() {
     setSearchQuery('')
     setTagFilter(null)
     setActionFilter('all')
-    setCcFilter('all')
     setExtraActions([])
     setActionsCursor(null)
     setHasMoreActions(false)
+    setEditingAction(null)
+    setShowEditInitiative(false)
   }, [initiativeId])
 
   useEffect(() => {
@@ -222,6 +234,12 @@ export default function CommandCenterPage() {
     queryFn: () => actionsApi.getCommandCenter().then((r) => r.data),
     enabled: !initiativeId,
   } as any)
+
+  const { data: workspaceTagsData } = useQuery({
+    queryKey: ['tags-all'],
+    queryFn: () => tagsApi.listAll().then((r) => r.data?.tags || []),
+  })
+  const workspaceTags: Tag[] = workspaceTagsData || []
 
   const initiative: Initiative | null = (initData as any)?.initiative || null
   const isLoading = initiativeId ? initLoading : ccLoading
@@ -263,9 +281,6 @@ export default function CommandCenterPage() {
 
   const overdueActions = baseActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed')
   const openActions = baseActions.filter((a) => a.status !== 'completed')
-  const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7)
-  const weekActions = baseActions.filter((a) => a.dueDate && new Date(a.dueDate) <= weekEnd && a.status !== 'completed')
-  const mineActions = baseActions.filter((a) => (a.assignee?.id === user?.id || (a as any).assigneeId === user?.id) && a.status !== 'completed')
 
   const userRole = initiative?.creator?.id === user?.id
     ? 'owner'
@@ -330,20 +345,21 @@ export default function CommandCenterPage() {
     return base
   })()
 
-  // Filter actions for CC mode
+  // Filter actions for CC mode (same logic as initiative mode)
   const filteredCCActions = (() => {
     let base: Action[]
-    switch (ccFilter) {
+    switch (actionFilter) {
+      case 'open': base = openActions; break
       case 'overdue': base = overdueActions; break
-      case 'week': base = weekActions; break
-      case 'mine': base = mineActions; break
-      default: base = openActions
+      case 'completed': base = baseActions.filter((a) => a.status === 'completed'); break
+      default: base = baseActions
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       base = base.filter((a) =>
         a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) ||
-        a.assignee?.name.toLowerCase().includes(q) || a.initiative?.title.toLowerCase().includes(q)
+        a.assignee?.name.toLowerCase().includes(q) || a.initiative?.title.toLowerCase().includes(q) ||
+        a.tags?.some((at) => at.tag.name.toLowerCase().includes(q))
       )
     }
     return base
@@ -390,6 +406,50 @@ export default function CommandCenterPage() {
     finally { setLoadingMore(false) }
   }
 
+  const handleSaveInitiative = async () => {
+    if (!initiativeId || !editInitForm.title.trim()) return
+    setSavingInitiative(true)
+    try {
+      await initiativesApi.update(initiativeId, { ...editInitForm, description: editInitForm.description || null, dueDate: editInitForm.dueDate || null })
+      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      setShowEditInitiative(false)
+    } catch { toast({ title: 'Failed to save', variant: 'destructive' }) }
+    finally { setSavingInitiative(false) }
+  }
+
+  const openEditAction = (action: Action) => {
+    setEditingAction(action)
+    setEditActionForm({
+      title: action.title,
+      description: action.description || '',
+      priority: action.priority,
+      status: action.status,
+      dueDate: action.dueDate?.split('T')[0] || '',
+      assigneeId: action.assignee?.id || '',
+      tagIds: action.tags?.map((at) => at.tag.id) || [],
+    })
+  }
+
+  const handleSaveEditAction = async () => {
+    if (!editingAction || !editActionForm.title.trim()) return
+    setSavingEditAction(true)
+    try {
+      await actionsApi.update(editingAction.id, {
+        title: editActionForm.title.trim(),
+        description: editActionForm.description || null,
+        priority: editActionForm.priority,
+        status: editActionForm.status,
+        dueDate: editActionForm.dueDate || null,
+        assigneeId: editActionForm.assigneeId || null,
+        tagIds: editActionForm.tagIds,
+      })
+      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      setEditingAction(null)
+    } catch { toast({ title: 'Failed to save', variant: 'destructive' }) }
+    finally { setSavingEditAction(false) }
+  }
+
   const handleAddAction = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!actionForm.title.trim()) return
@@ -399,7 +459,7 @@ export default function CommandCenterPage() {
         await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeId: actionForm.assigneeId || null, tagIds: actionForm.tagIds })
         queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
       } else {
-        await actionsApi.createStandalone({ title: actionForm.title.trim(), description: actionForm.description.trim() || undefined, priority: actionForm.priority, dueDate: actionForm.dueDate || null })
+        await actionsApi.createStandalone({ title: actionForm.title.trim(), description: actionForm.description.trim() || undefined, priority: actionForm.priority, dueDate: actionForm.dueDate || null, tagIds: actionForm.tagIds })
         queryClient.invalidateQueries({ queryKey: ['command-center'] })
       }
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
@@ -544,38 +604,19 @@ export default function CommandCenterPage() {
           </div>
         )}
       </div>
-      {/* Filters */}
-      {initiativeId ? (
-        <div className="flex bg-[#f3f4f6] rounded-lg p-0.5 gap-0.5 overflow-x-auto shrink-0">
-          {(['all', 'open', 'overdue', 'completed'] as ActionFilter[]).map((f) => (
-            <button key={f} onClick={() => setActionFilter(f)}
-              className={cn('px-2.5 py-1 text-[12px] font-semibold rounded-md transition-all capitalize shrink-0', actionFilter === f
-                ? f === 'overdue' ? 'bg-[#fef2f2] text-[#dc2626] shadow-sm' : 'bg-white text-[#4648d4] shadow-sm'
-                : 'text-[#9ca3af] hover:text-[#374151]'
-              )}
-            >
-              {f === 'all' ? `All (${baseActions.length})` : f === 'open' ? `Open (${openActions.length})` : f === 'overdue' ? `Overdue (${overdueActions.length})` : `Done (${baseActions.filter((a) => a.status === 'completed').length})`}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 shrink-0">
-          {([
-            { key: 'all' as CCFilter, label: 'All Open', count: openActions.length },
-            { key: 'overdue' as CCFilter, label: 'Overdue', count: overdueActions.length },
-            { key: 'week' as CCFilter, label: 'Due This Week', count: weekActions.length },
-            { key: 'mine' as CCFilter, label: 'Mine', count: mineActions.length },
-          ]).map(({ key, label, count }) => (
-            <button key={key} onClick={() => setCcFilter(key)}
-              className={cn('px-3 py-1 rounded-lg text-[12px] font-semibold transition-all shrink-0',
-                ccFilter === key
-                  ? key === 'overdue' ? 'bg-[#fef2f2] text-[#dc2626]' : 'bg-[#ede9fe] text-[#4648d4]'
-                  : 'bg-white border border-[#e5e7eb] text-[#6b7280] hover:border-[#4648d4]/30 hover:text-[#4648d4]'
-              )}
-            >{label} <span className="opacity-60 tabular-nums">{count}</span></button>
-          ))}
-        </div>
-      )}
+      {/* Filters — same tabs in both CC and initiative mode */}
+      <div className="flex bg-[#f3f4f6] rounded-lg p-0.5 gap-0.5 overflow-x-auto shrink-0">
+        {(['all', 'open', 'overdue', 'completed'] as ActionFilter[]).map((f) => (
+          <button key={f} onClick={() => setActionFilter(f)}
+            className={cn('px-2.5 py-1 text-[12px] font-semibold rounded-md transition-all capitalize shrink-0', actionFilter === f
+              ? f === 'overdue' ? 'bg-[#fef2f2] text-[#dc2626] shadow-sm' : 'bg-white text-[#4648d4] shadow-sm'
+              : 'text-[#9ca3af] hover:text-[#374151]'
+            )}
+          >
+            {f === 'all' ? `All (${baseActions.length})` : f === 'open' ? `Open (${openActions.length})` : f === 'overdue' ? `Overdue (${overdueActions.length})` : `Done (${baseActions.filter((a) => a.status === 'completed').length})`}
+          </button>
+        ))}
+      </div>
     </div>
   )
 
@@ -586,15 +627,17 @@ export default function CommandCenterPage() {
     const actionTags = action.tags?.map((at) => at.tag) || []
     return (
       <div
-        onClick={() => navigate(getActionPath(action))}
-        className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100 cursor-pointer', action.status === 'completed' && 'opacity-50')}
+        className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100', action.status === 'completed' && 'opacity-50')}
       >
         <div className="w-[3px] shrink-0 self-stretch" style={{ backgroundColor: isOD ? '#dc2626' : isDueSoon ? '#2563eb' : STATUS_BORDER[action.status] || '#e5e7eb' }} />
         <div className="flex-1 flex items-start gap-3 px-4 py-2.5 min-w-0">
           <div className={cn('w-1.5 h-1.5 rounded-full mt-[5px] shrink-0', PRIORITY_DOT[action.priority] || 'bg-[#e5e7eb]')} />
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-0.5">
-              <h4 className={cn('text-[14px] font-medium text-[#111827] truncate', action.status === 'completed' && 'line-through text-[#9ca3af]')}>
+              <h4
+                onClick={() => navigate(getActionPath(action))}
+                className={cn('text-[14px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors', action.status === 'completed' && 'line-through text-[#9ca3af]')}
+              >
                 {action.title}
               </h4>
               <div className="flex items-center gap-2 shrink-0">
@@ -641,6 +684,12 @@ export default function CommandCenterPage() {
                     className="text-[12px] font-semibold text-[#4648d4] opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
                   >✓ Done</button>
                 )}
+                <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
+                  className="text-[#d1d5db] hover:text-[#4648d4] opacity-0 group-hover:opacity-100 transition-all"
+                  title="Quick edit"
+                >
+                  <span className="material-symbols-outlined text-[15px]">edit</span>
+                </button>
                 {(initiativeId ? isOwnerOrAdmin : true) && (
                   confirmDeleteActionId === action.id ? (
                     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -730,6 +779,14 @@ export default function CommandCenterPage() {
                     </button>
                   )
                 })()}
+                {isOwnerOrAdmin && (
+                  <button onClick={() => {
+                    setEditInitForm({ title: initiative.title, description: initiative.description || '', status: initiative.status, priority: initiative.priority, dueDate: initiative.dueDate?.split('T')[0] || '' })
+                    setShowEditInitiative(true)
+                  }} className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] hover:bg-[#ede9fe] rounded-lg transition-colors" title="Edit initiative">
+                    <span className="material-symbols-outlined text-[20px]">edit</span>
+                  </button>
+                )}
                 {isOwnerOrAdmin && (
                   <button onClick={() => setShowSettings(true)} className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] hover:bg-[#ede9fe] rounded-lg transition-colors">
                     <span className="material-symbols-outlined text-[22px]">settings</span>
@@ -842,7 +899,7 @@ export default function CommandCenterPage() {
                 <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] py-16 text-center">
                   <span className="material-symbols-outlined text-[36px] text-[#e5e7eb] block mb-3" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
                   <p className="text-[14px] font-medium text-[#9ca3af]">
-                    {ccFilter === 'all' ? 'All caught up — no open actions.' : 'No actions match this filter.'}
+                    {actionFilter === 'all' ? 'All caught up — no open actions.' : 'No actions match this filter.'}
                   </p>
                 </div>
               ) : (
@@ -902,7 +959,7 @@ export default function CommandCenterPage() {
           <section className="col-span-12 lg:col-span-4 space-y-4">
             {/* Stats */}
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
-              {(searchQuery || (initiativeId ? actionFilter !== 'all' : ccFilter !== 'all') || tagFilter) && (
+              {(searchQuery || actionFilter !== 'all' || tagFilter) && (
                 <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3">Filtered view</p>
               )}
               <div className="grid grid-cols-3 gap-3 text-center">
@@ -934,7 +991,7 @@ export default function CommandCenterPage() {
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
                     </div>
                     <div>
-                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{mineActions.length}</p>
+                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{baseActions.filter((a) => (a.assignee?.id === user?.id || (a as any).assigneeId === user?.id) && a.status !== 'completed').length}</p>
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Mine</p>
                     </div>
                   </>
@@ -1070,13 +1127,14 @@ export default function CommandCenterPage() {
                     <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                     <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
-                      <div className="relative">
-                        <span className="text-[13px] font-medium text-[#374151]">
-                          {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
-                        </span>
-                        <input type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
-                      </div>
+                      <span className="text-[13px] font-medium text-[#374151]">
+                        {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                      </span>
+                      <button type="button" onClick={() => addActionDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
+                        <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                      </button>
                       {actionForm.dueDate && <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>}
+                      <input ref={addActionDueDateRef} type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
                     </div>
                   </div>
                   {/* Assignee (initiative mode only) */}
@@ -1128,25 +1186,26 @@ export default function CommandCenterPage() {
                     </div>
                   )}
                 </div>
-                {/* Tags (initiative mode only) */}
-                {initiativeId && (
-                  <>
-                    <div className="h-px bg-[#f3f4f6]" />
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">label</span>
-                        <span className="text-[12px] font-medium text-[#9ca3af]">Tags</span>
-                      </div>
-                      <InlineTagInput
-                        value={actionForm.tagIds}
-                        onChange={(ids) => setActionForm((f) => ({ ...f, tagIds: ids }))}
-                        existingTags={allTags}
-                        initiativeId={initiativeId}
-                        onTagCreated={() => queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })}
-                      />
+                {/* Tags — always visible, workspace-level */}
+                <>
+                  <div className="h-px bg-[#f3f4f6]" />
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">label</span>
+                      <span className="text-[12px] font-medium text-[#9ca3af]">Tags</span>
                     </div>
-                  </>
-                )}
+                    <InlineTagInput
+                      value={actionForm.tagIds}
+                      onChange={(ids) => setActionForm((f) => ({ ...f, tagIds: ids }))}
+                      existingTags={workspaceTags}
+                      onCreateTag={async (name, color) => {
+                        const res = await tagsApi.createGlobal({ name, color })
+                        queryClient.invalidateQueries({ queryKey: ['tags-all'] })
+                        return (res.data as any).tag
+                      }}
+                    />
+                  </div>
+                </>
               </div>
               <div className="px-4 py-4 flex gap-2.5" style={{ borderTop: '1px solid #f3f4f6' }}>
                 <button type="button" onClick={() => setShowAddAction(false)}
@@ -1157,6 +1216,212 @@ export default function CommandCenterPage() {
                 >{saving ? 'Creating...' : 'Create Action'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Initiative Edit Pane ─────────────────────────────────────────────── */}
+      {showEditInitiative && initiative && (
+        <div className="fixed inset-0 z-[60] flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEditInitiative(false) }}
+        >
+          <div className="bg-white w-full md:w-[480px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+            <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[#4648d4] text-[16px]">edit</span>
+                </div>
+                <h2 className="text-[15px] font-semibold text-[#111827]">Edit Initiative</h2>
+              </div>
+              <button onClick={() => setShowEditInitiative(false)} className="p-1.5 text-[#9ca3af] hover:text-[#374151] rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-5">
+              <div>
+                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-1.5">Title</label>
+                <input autoFocus type="text" value={editInitForm.title} onChange={(e) => setEditInitForm((f) => ({ ...f, title: e.target.value }))}
+                  className="w-full text-[15px] font-semibold text-[#111827] focus:outline-none bg-transparent border-b border-[#e5e7eb] pb-1 focus:border-[#4648d4]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-1.5">Description</label>
+                <textarea rows={4} value={editInitForm.description} onChange={(e) => setEditInitForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Add a description..."
+                  className="w-full text-[13px] text-[#374151] focus:outline-none bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-3 resize-none placeholder:text-[#c4c4c4] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">Status</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['active', 'paused', 'at-risk', 'completed'] as const).map((s) => (
+                    <button key={s} type="button" onClick={() => setEditInitForm((f) => ({ ...f, status: s }))}
+                      className={cn('px-3 py-1 rounded-lg text-[12px] font-semibold capitalize border transition-all', editInitForm.status === s ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]' : 'bg-white text-[#9ca3af] border-[#e5e7eb] hover:border-[#4648d4]/40')}
+                    >{s === 'at-risk' ? 'At Risk' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">Priority</label>
+                <div className="flex gap-1.5">
+                  {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
+                    <button key={p} type="button" onClick={() => setEditInitForm((f) => ({ ...f, priority: p }))}
+                      className={cn('px-2.5 py-1 rounded-md text-[12px] font-semibold capitalize border transition-all', editInitForm.priority === p
+                        ? p === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca]' : p === 'high' ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]' : p === 'medium' ? 'bg-[#eff6ff] text-[#2563eb] border-[#bfdbfe]' : 'bg-[#f3f4f6] text-[#6b7280] border-[#e5e7eb]'
+                        : 'bg-white text-[#9ca3af] border-[#e5e7eb] hover:border-[#4648d4]/40'
+                      )}>{p}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest mb-2">Due Date</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-medium text-[#374151]">
+                    {editInitForm.dueDate ? format(new Date(editInitForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">No due date</span>}
+                  </span>
+                  <button type="button" onClick={() => editInitDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
+                    <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                  </button>
+                  {editInitForm.dueDate && <button type="button" onClick={() => setEditInitForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
+                  <input ref={editInitDueDateRef} type="date" value={editInitForm.dueDate} onChange={(e) => setEditInitForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-4 flex gap-2.5" style={{ borderTop: '1px solid #f3f4f6' }}>
+              <button onClick={() => setShowEditInitiative(false)}
+                className="flex-1 h-9 text-[13px] font-semibold text-[#6b7280] border border-[#e5e7eb] rounded-lg hover:bg-[#f9fafb] transition-colors"
+              >Cancel</button>
+              <button onClick={handleSaveInitiative} disabled={savingInitiative || !editInitForm.title.trim()}
+                className="flex-1 h-9 text-[13px] font-semibold bg-[#4648d4] hover:bg-[#3730a3] text-white rounded-lg transition-colors disabled:opacity-40"
+              >{savingInitiative ? 'Saving...' : 'Save Changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Action Quick-Edit Pane ───────────────────────────────────────────── */}
+      {editingAction && (
+        <div className="fixed inset-0 z-[60] flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingAction(null) }}
+        >
+          <div className="bg-white w-full md:w-[480px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+            <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[#4648d4] text-[16px]">edit</span>
+                </div>
+                <h2 className="text-[15px] font-semibold text-[#111827]">Edit Action</h2>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => navigate(getActionPath(editingAction))} className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] rounded-lg hover:bg-[#f3f4f6] transition-colors" title="Open full detail page">
+                  <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                </button>
+                <button onClick={() => setEditingAction(null)} className="p-1.5 text-[#9ca3af] hover:text-[#374151] rounded-lg hover:bg-[#f3f4f6] transition-colors">
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
+              <input autoFocus type="text" value={editActionForm.title} onChange={(e) => setEditActionForm((f) => ({ ...f, title: e.target.value }))}
+                className="w-full text-[15px] font-semibold text-[#111827] focus:outline-none bg-transparent border-b border-[#e5e7eb] pb-1 focus:border-[#4648d4]"
+                placeholder="Action title..."
+              />
+              <textarea rows={3} value={editActionForm.description} onChange={(e) => setEditActionForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Add a description..."
+                className="w-full text-[13px] text-[#374151] focus:outline-none bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-3 resize-none placeholder:text-[#c4c4c4] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4]"
+              />
+              <div className="space-y-1">
+                {/* Priority */}
+                <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                  <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">flag</span>
+                  <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Priority</span>
+                  <div className="flex gap-1 flex-1">
+                    {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
+                      <button key={p} type="button" onClick={() => setEditActionForm((f) => ({ ...f, priority: p }))}
+                        className={cn('px-2 py-0.5 rounded-md text-[12px] font-semibold capitalize transition-all border', editActionForm.priority === p
+                          ? p === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca]' : p === 'high' ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]' : p === 'medium' ? 'bg-[#eff6ff] text-[#2563eb] border-[#bfdbfe]' : 'bg-[#f3f4f6] text-[#6b7280] border-[#e5e7eb]'
+                          : 'bg-transparent text-[#9ca3af] border-[#f0f0f0] hover:border-[#e5e7eb] hover:text-[#6b7280]'
+                        )}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Status */}
+                <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                  <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">pending</span>
+                  <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Status</span>
+                  <div className="flex flex-wrap gap-1 flex-1">
+                    {(['todo', 'in-progress', 'in-review', 'completed'] as const).map((s) => (
+                      <button key={s} type="button" onClick={() => setEditActionForm((f) => ({ ...f, status: s }))}
+                        className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all border', editActionForm.status === s
+                          ? cn(STATUS_BADGE[s]?.cls, 'border-transparent shadow-sm') : 'bg-transparent text-[#9ca3af] border-[#f0f0f0] hover:border-[#e5e7eb]'
+                        )}>{STATUS_BADGE[s]?.label || s}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Due Date */}
+                <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                  <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
+                  <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="text-[13px] font-medium text-[#374151]">
+                      {editActionForm.dueDate ? format(new Date(editActionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                    </span>
+                    <button type="button" onClick={() => editActionDueDateRef.current?.click()} className="p-0.5 text-[#9ca3af] hover:text-[#4648d4] transition-colors">
+                      <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                    </button>
+                    {editActionForm.dueDate && <button type="button" onClick={() => setEditActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
+                    <input ref={editActionDueDateRef} type="date" value={editActionForm.dueDate} onChange={(e) => setEditActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
+                  </div>
+                </div>
+                {/* Assignee (only when action belongs to an initiative) */}
+                {editingAction.initiative && (() => {
+                  const initData2 = editingAction.initiative?.id === initiativeId ? initiative : null
+                  const assigneeList = initData2 ? [
+                    { id: initData2.creator.id, name: initData2.creator.name, avatar: initData2.creator.avatar || null },
+                    ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name, avatar: m.user?.avatar || null })),
+                  ] : []
+                  if (!assigneeList.length) return null
+                  return (
+                    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">person</span>
+                      <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Assignee</span>
+                      <select value={editActionForm.assigneeId} onChange={(e) => setEditActionForm((f) => ({ ...f, assigneeId: e.target.value }))}
+                        className="flex-1 text-[13px] text-[#374151] bg-transparent focus:outline-none cursor-pointer"
+                      >
+                        <option value="">Unassigned</option>
+                        {assigneeList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </div>
+                  )
+                })()}
+              </div>
+              {/* Tags — always visible, workspace-level */}
+              <div className="h-px bg-[#f3f4f6]" />
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">label</span>
+                  <span className="text-[12px] font-medium text-[#9ca3af]">Tags</span>
+                </div>
+                <InlineTagInput
+                  value={editActionForm.tagIds}
+                  onChange={(ids) => setEditActionForm((f) => ({ ...f, tagIds: ids }))}
+                  existingTags={workspaceTags}
+                  onCreateTag={async (name, color) => {
+                    const res = await tagsApi.createGlobal({ name, color })
+                    queryClient.invalidateQueries({ queryKey: ['tags-all'] })
+                    return (res.data as any).tag
+                  }}
+                />
+              </div>
+            </div>
+            <div className="px-4 py-4 flex gap-2.5" style={{ borderTop: '1px solid #f3f4f6' }}>
+              <button onClick={() => setEditingAction(null)}
+                className="flex-1 h-9 text-[13px] font-semibold text-[#6b7280] border border-[#e5e7eb] rounded-lg hover:bg-[#f9fafb] transition-colors"
+              >Cancel</button>
+              <button onClick={handleSaveEditAction} disabled={savingEditAction || !editActionForm.title.trim()}
+                className="flex-1 h-9 text-[13px] font-semibold bg-[#4648d4] hover:bg-[#3730a3] text-white rounded-lg transition-colors disabled:opacity-40"
+              >{savingEditAction ? 'Saving...' : 'Save Changes'}</button>
+            </div>
           </div>
         </div>
       )}

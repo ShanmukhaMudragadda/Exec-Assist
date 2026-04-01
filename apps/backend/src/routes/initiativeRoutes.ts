@@ -17,6 +17,7 @@ import {
   createTag,
   deleteTag,
 } from '../controllers/initiativeController';
+import { listAllTags, createGlobalTag } from '../controllers/tagController';
 import {
   createAction,
   bulkCreateActions,
@@ -57,6 +58,8 @@ router.get('/initiatives/:initiativeId/settings', authMiddleware, getSettings);
 router.patch('/initiatives/:initiativeId/settings', authMiddleware, updateSettings);
 
 // ── tags ─────────────────────────────────────────────────────────────────────
+router.get('/tags', authMiddleware, listAllTags);                                    // workspace-level (global)
+router.post('/tags', authMiddleware, createGlobalTag);                              // create global tag
 router.get('/initiatives/:initiativeId/tags', authMiddleware, listTags);
 router.post('/initiatives/:initiativeId/tags', authMiddleware, createTag);
 router.delete('/initiatives/:initiativeId/tags/:tagId', authMiddleware, deleteTag);

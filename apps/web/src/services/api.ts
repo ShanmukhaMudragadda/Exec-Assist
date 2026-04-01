@@ -81,6 +81,8 @@ export const tagsApi = {
     api.post(`/initiatives/${initiativeId}/tags`, data),
   delete: (initiativeId: string, tagId: string) =>
     api.delete(`/initiatives/${initiativeId}/tags/${tagId}`),
+  listAll: () => api.get('/tags'),
+  createGlobal: (data: { name: string; color?: string }) => api.post('/tags', data),
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -92,7 +94,7 @@ export const actionsApi = {
   }) => api.post(`/initiatives/${initiativeId}/actions`, data),
   createStandalone: (data: {
     title: string; description?: string; priority?: string; status?: string;
-    dueDate?: string | null; assigneeId?: string | null;
+    dueDate?: string | null; assigneeId?: string | null; tagIds?: string[];
   }) => api.post('/actions', data),
   bulkCreate: (initiativeId: string, actions: unknown[]) =>
     api.post(`/initiatives/${initiativeId}/actions/bulk`, { actions }),

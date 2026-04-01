@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, isBefore, formatDistanceToNow } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
-import { actionsApi, initiativesApi } from '@/services/api'
+import { actionsApi, initiativesApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
 
@@ -92,6 +92,16 @@ export default function ActionDetailPage() {
     queryFn: () => initiativesApi.list().then((r) => r.data),
   })
   const allInitiatives: any[] = (allInitData as any)?.initiatives || []
+
+  // Fetch workspace tags for tag editing
+  const { data: workspaceTagsData } = useQuery({
+    queryKey: ['tags-all'],
+    queryFn: () => tagsApi.listAll().then((r) => r.data?.tags || []),
+  })
+  const workspaceTags: { id: string; name: string; color: string }[] = workspaceTagsData || []
+  const [editingTags, setEditingTags] = useState(false)
+  const [tagInput, setTagInput] = useState('')
+  const [creatingTag, setCreatingTag] = useState(false)
 
   const now = new Date()
   const isOverdue = action?.dueDate && isBefore(new Date(action.dueDate), now) && action?.status !== 'completed'
@@ -319,16 +329,83 @@ export default function ActionDetailPage() {
                 </div>
               )}
 
-              {/* Tags */}
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
+              {/* Tags — editable */}
+              <div className="mb-4">
+                <div className="flex flex-wrap gap-1.5 items-center">
                   {tags.map((tag) => (
-                    <span key={tag.id} className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: tag.color }}>
+                    <span key={tag.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: tag.color }}>
                       #{tag.name}
+                      {canEdit && (
+                        <button type="button" onClick={async () => {
+                          const newIds = tags.filter((t) => t.id !== tag.id).map((t) => t.id)
+                          await handleUpdate({ tagIds: newIds })
+                        }} className="ml-0.5 opacity-70 hover:opacity-100 leading-none">×</button>
+                      )}
                     </span>
                   ))}
+                  {canEdit && !editingTags && (
+                    <button type="button" onClick={() => setEditingTags(true)}
+                      className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#f3f4f6] text-[#9ca3af] hover:bg-[#ede9fe] hover:text-[#4648d4] transition-colors border border-[#e5e7eb] border-dashed"
+                    >+ Add tag</button>
+                  )}
                 </div>
-              )}
+                {canEdit && editingTags && (
+                  <div className="mt-2">
+                    <input type="text" autoFocus placeholder="Search or create tag..."
+                      value={tagInput} onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Escape') { setEditingTags(false); setTagInput('') }
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const exact = workspaceTags.find((t) => t.name.toLowerCase() === tagInput.trim().toLowerCase())
+                          if (exact) {
+                            if (!tags.find((t) => t.id === exact.id)) await handleUpdate({ tagIds: [...tags.map((t) => t.id), exact.id] })
+                          } else if (tagInput.trim()) {
+                            setCreatingTag(true)
+                            try {
+                              const res = await tagsApi.createGlobal({ name: tagInput.trim() })
+                              const newTag = (res.data as any).tag
+                              queryClient.invalidateQueries({ queryKey: ['tags-all'] })
+                              await handleUpdate({ tagIds: [...tags.map((t) => t.id), newTag.id] })
+                            } finally { setCreatingTag(false) }
+                          }
+                          setTagInput('')
+                        }
+                      }}
+                      onBlur={() => { if (!tagInput.trim()) { setEditingTags(false); setTagInput('') } }}
+                      className="w-full h-8 px-3 bg-[#f2f4f6] rounded-lg text-xs text-[#111827] focus:ring-2 focus:ring-[#4648d4]/20 focus:outline-none placeholder:text-[#9ca3af]"
+                    />
+                    {tagInput && (
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {workspaceTags.filter((t) => t.name.toLowerCase().includes(tagInput.toLowerCase()) && !tags.find((et) => et.id === t.id)).map((tag) => (
+                          <button key={tag.id} type="button" onMouseDown={async (e) => {
+                            e.preventDefault()
+                            await handleUpdate({ tagIds: [...tags.map((t) => t.id), tag.id] })
+                            setTagInput('')
+                          }} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] hover:bg-[#ede9fe] hover:text-[#4648d4] transition-colors">
+                            #{tag.name}
+                          </button>
+                        ))}
+                        {!workspaceTags.find((t) => t.name.toLowerCase() === tagInput.trim().toLowerCase()) && (
+                          <button type="button" onMouseDown={async (e) => {
+                            e.preventDefault()
+                            setCreatingTag(true)
+                            try {
+                              const res = await tagsApi.createGlobal({ name: tagInput.trim() })
+                              const newTag = (res.data as any).tag
+                              queryClient.invalidateQueries({ queryKey: ['tags-all'] })
+                              await handleUpdate({ tagIds: [...tags.map((t) => t.id), newTag.id] })
+                            } finally { setCreatingTag(false) }
+                            setTagInput('')
+                          }} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#ede9fe] text-[#4648d4] border border-[#4648d4]/20 hover:bg-[#4648d4] hover:text-white transition-all">
+                            {creatingTag ? '...' : `+ Create "#${tagInput.trim()}"`}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Status selector */}
               <div className="flex items-center gap-1.5 flex-wrap">
