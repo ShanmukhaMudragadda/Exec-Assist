@@ -1134,7 +1134,7 @@ export default function CommandCenterPage() {
                         <span className="material-symbols-outlined text-[16px]">calendar_month</span>
                       </button>
                       {actionForm.dueDate && <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>}
-                      <input ref={addActionDueDateRef} type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
+                      <input ref={addActionDueDateRef} type="date" value={actionForm.dueDate} onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                     </div>
                   </div>
                   {/* Assignee (initiative mode only) */}
@@ -1283,7 +1283,7 @@ export default function CommandCenterPage() {
                     <span className="material-symbols-outlined text-[16px]">calendar_month</span>
                   </button>
                   {editInitForm.dueDate && <button type="button" onClick={() => setEditInitForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
-                  <input ref={editInitDueDateRef} type="date" value={editInitForm.dueDate} onChange={(e) => setEditInitForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
+                  <input ref={editInitDueDateRef} type="date" value={editInitForm.dueDate} onChange={(e) => setEditInitForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                 </div>
               </div>
             </div>
@@ -1370,7 +1370,7 @@ export default function CommandCenterPage() {
                       <span className="material-symbols-outlined text-[16px]">calendar_month</span>
                     </button>
                     {editActionForm.dueDate && <button type="button" onClick={() => setEditActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
-                    <input ref={editActionDueDateRef} type="date" value={editActionForm.dueDate} onChange={(e) => setEditActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-0 h-0 pointer-events-none" />
+                    <input ref={editActionDueDateRef} type="date" value={editActionForm.dueDate} onChange={(e) => setEditActionForm((f) => ({ ...f, dueDate: e.target.value }))} className="absolute opacity-0 w-px h-px overflow-hidden" />
                   </div>
                 </div>
                 {/* Assignee (only when action belongs to an initiative) */}
