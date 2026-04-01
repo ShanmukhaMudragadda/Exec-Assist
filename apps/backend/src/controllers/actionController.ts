@@ -487,15 +487,22 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
     }
     const extracted = await extractTasksFromTranscript(content, membersList, aiSettings);
 
-    const actions = extracted.map((t) => ({
-      title: t.title,
-      description: t.description ?? null,
-      priority: t.priority,
-      dueDate: t.dueDate ?? null,
-      assigneeId: t.assigneeIds[0] ?? null,
-      sourceType: 'transcript',
-      tags: t.tags,
-    }));
+    const actions = extracted.map((t) => {
+      let dueDate: string | null = null;
+      if (t.dueDate) {
+        const d = new Date(t.dueDate);
+        dueDate = isNaN(d.getTime()) ? null : t.dueDate;
+      }
+      return {
+        title: t.title,
+        description: t.description ?? null,
+        priority: t.priority,
+        dueDate,
+        assigneeId: t.assigneeIds[0] ?? null,
+        sourceType: 'transcript',
+        tags: t.tags,
+      };
+    });
 
     return res.json({ actions, count: actions.length });
   } catch (err) {
@@ -581,13 +588,21 @@ export const generateStandaloneActions = async (req: AuthRequest, res: Response)
     const { extractTasksFromTranscript } = await import('../services/AIService');
     const extracted = await extractTasksFromTranscript(content, [], undefined);
 
-    const actions = extracted.map((t) => ({
-      title: t.title,
-      description: t.description ?? null,
-      priority: t.priority,
-      dueDate: t.dueDate ?? null,
-      tags: t.tags,
-    }));
+    const actions = extracted.map((t) => {
+      // Guard against non-parseable date strings from Gemini (e.g. "next week")
+      let dueDate: string | null = null;
+      if (t.dueDate) {
+        const d = new Date(t.dueDate);
+        dueDate = isNaN(d.getTime()) ? null : t.dueDate;
+      }
+      return {
+        title: t.title,
+        description: t.description ?? null,
+        priority: t.priority,
+        dueDate,
+        tags: t.tags,
+      };
+    });
 
     return res.json({ actions, count: actions.length });
   } catch (err) {

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { format, isBefore, differenceInDays } from 'date-fns'
+import { format, isBefore, differenceInDays, isValid } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi, actionsApi, membersApi, initiativeSettingsApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
@@ -1223,7 +1223,7 @@ export default function CommandCenterPage() {
                                 <span className={cn('text-[11px] font-semibold px-1.5 py-0.5 rounded capitalize',
                                   a.priority === 'urgent' ? 'bg-[#fef2f2] text-[#dc2626]' : a.priority === 'high' ? 'bg-[#ede9fe] text-[#4648d4]' : a.priority === 'medium' ? 'bg-[#eff6ff] text-[#2563eb]' : 'bg-[#f3f4f6] text-[#6b7280]'
                                 )}>{a.priority || 'medium'}</span>
-                                {a.dueDate && <span className="text-[11px] text-[#9ca3af]">{format(new Date(a.dueDate), 'MMM d')}</span>}
+                                {a.dueDate && (() => { const d = new Date(a.dueDate); return isValid(d) ? <span className="text-[11px] text-[#9ca3af]">{format(d, 'MMM d')}</span> : null })()}
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
