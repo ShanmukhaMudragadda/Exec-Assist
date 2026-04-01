@@ -9,6 +9,7 @@ interface User {
   emailVerified: boolean
   avatar?: string | null
   emailNotifications: boolean
+  pushNotificationsEnabled?: boolean
   dailyReportTime?: string | null
 }
 

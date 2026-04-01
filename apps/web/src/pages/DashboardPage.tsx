@@ -7,6 +7,7 @@ import { initiativesApi, actionsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
 
+// Helper function to get greeting
 function getGreeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Good morning'
@@ -14,6 +15,7 @@ function getGreeting() {
   return 'Good evening'
 }
 
+// ProgressBar component
 function ProgressBar({ pct, color = '#4648d4' }: { pct: number; color?: string }) {
   return (
     <div className="h-[3px] bg-[#f3f4f6] rounded-full overflow-hidden flex-1">
@@ -29,11 +31,51 @@ const PRIORITY_COLOR: Record<string, string> = {
   urgent: '#dc2626', high: '#4648d4', medium: '#6b7280', low: '#d1d5db',
 }
 
+// Constants for localStorage keys
+const LS_BRIEF_DATA_KEY = 'executiveBriefData';
+const LS_BRIEF_DATE_KEY = 'executiveBriefFetchDate';
+
 export default function DashboardPage() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const now = new Date()
+  const todayString = now.toDateString(); // Consistent date string for comparison
 
+  const {
+    data: briefData,
+    isFetching: briefLoading,
+    refetch: refetchBriefQuery,
+  } = useQuery({
+    queryKey: ['executive-brief'],
+    queryFn: async () => {
+      // Return localStorage data if it's from today — skip the API entirely
+      try {
+        const storedDate = localStorage.getItem(LS_BRIEF_DATE_KEY);
+        const storedData = localStorage.getItem(LS_BRIEF_DATA_KEY);
+        if (storedDate === todayString && storedData) {
+          return JSON.parse(storedData);
+        }
+      } catch {}
+
+      const fetchedData = await actionsApi.getExecutiveBrief(true).then((r) => r.data);
+      try {
+        localStorage.setItem(LS_BRIEF_DATE_KEY, todayString);
+        localStorage.setItem(LS_BRIEF_DATA_KEY, JSON.stringify(fetchedData));
+      } catch {}
+      return fetchedData;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  const refetchBrief = () => {
+    // Clear localStorage so the queryFn hits the API with refresh=true
+    try {
+      localStorage.removeItem(LS_BRIEF_DATE_KEY);
+      localStorage.removeItem(LS_BRIEF_DATA_KEY);
+    } catch {}
+    refetchBriefQuery();
+  };
 
   const { data: initiativesData } = useQuery({
     queryKey: ['initiatives'],
@@ -42,11 +84,6 @@ export default function DashboardPage() {
   const { data: ccData } = useQuery({
     queryKey: ['command-center'],
     queryFn: () => actionsApi.getCommandCenter().then((r) => r.data),
-  })
-  const { data: briefData, isFetching: briefLoading, refetch: refetchBrief } = useQuery({
-    queryKey: ['executive-brief'],
-    queryFn: () => actionsApi.getExecutiveBrief().then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
   })
 
   const allInitiatives: any[] = (initiativesData as any)?.initiatives || []
@@ -70,7 +107,7 @@ export default function DashboardPage() {
     ...todayActions.filter((a) => !overdueActions.find((o) => o.id === a.id) && !urgentActions.find((u) => u.id === a.id)),
   ].slice(0, 8)
 
-  const aiBriefPoints: { headline: string; detail: string; metric: string | null; type: string }[] = (briefData as any)?.brief || []
+  const aiBriefPoints: { headline: string; detail: string; metric: string | null; type: string }[] = (briefData as any)?.brief || [];
 
   return (
     <AppLayout>
@@ -130,17 +167,17 @@ export default function DashboardPage() {
           </div>
 
           {/* Body */}
-          {briefLoading ? (
+          {briefLoading ? ( // Use briefLoading for spinner when fetching/refetching
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-0 px-4 py-2">
               {[0, 1].map((col) => (
                 <div key={col} className={cn('divide-y', col === 1 && 'pl-6')} style={{ borderColor: '#e2e8f0' }}>
                   {[0, 1].map((row) => (
                     <div key={row} className="py-3.5 animate-pulse space-y-2">
                       <div className="h-2 w-14 rounded" style={{ background: '#f3f4f6' }} />
-                      <div className="h-5 w-4/5 rounded" style={{ background: '#f3f4f6' }} />
-                      <div className="h-5 w-3/5 rounded" style={{ background: '#f3f4f6' }} />
-                      <div className="h-3 w-full rounded" style={{ background: '#f3f4f6' }} />
-                      <div className="h-3 w-11/12 rounded" style={{ background: '#f3f4f6' }} />
+                      <div className="h-2.5 w-4/5 rounded" style={{ background: '#f3f4f6' }} />
+                      <div className="h-2.5 w-3/5 rounded" style={{ background: '#f3f4f6' }} />
+                      <div className="h-2 w-full rounded" style={{ background: '#f3f4f6' }} />
+                      <div className="h-2 w-11/12 rounded" style={{ background: '#f3f4f6' }} />
                     </div>
                   ))}
                 </div>
@@ -227,7 +264,7 @@ export default function DashboardPage() {
                   <p className="text-[13px] text-[#9ca3af]">All clear — no priority actions.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-[#fafafa]">
+                    <div className="divide-y divide-[#fafafa]">
                   {priorityFeed.map((action) => {
                     const isOD = action.dueDate && isBefore(new Date(action.dueDate), now) && action.status !== 'completed'
                     const dotColor = PRIORITY_COLOR[action.priority] || '#d1d5db'

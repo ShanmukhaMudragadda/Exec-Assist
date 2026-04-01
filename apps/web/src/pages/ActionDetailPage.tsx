@@ -46,7 +46,6 @@ export default function ActionDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const commentRef = useRef<HTMLTextAreaElement>(null)
-  const dueDateRef = useRef<HTMLInputElement>(null)
   const [comment, setComment] = useState('')
   const [posting, setPosting] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -111,7 +110,9 @@ export default function ActionDetailPage() {
     setDeleting(true)
     try {
       await actionsApi.delete(actionId)
-      resolvedInitiativeId ? navigate(`/initiatives/${resolvedInitiativeId}`) : navigate('/command-center')
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      queryClient.invalidateQueries({ queryKey: ['initiative', resolvedInitiativeId] })
+      resolvedInitiativeId ? navigate(`/command-center?initiativeId=${resolvedInitiativeId}`) : navigate('/command-center')
     } finally { setDeleting(false) }
   }
 
@@ -122,6 +123,7 @@ export default function ActionDetailPage() {
       await actionsApi.update(actionId, patch)
       queryClient.invalidateQueries({ queryKey: ['action', actionId] })
       queryClient.invalidateQueries({ queryKey: ['initiative', resolvedInitiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
     } finally { setSaving(false) }
   }
 
@@ -233,21 +235,12 @@ export default function ActionDetailPage() {
       <div className="min-h-screen bg-[#f9fafb] p-3 md:p-3.5">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-[12px] text-[#9ca3af] mb-6 overflow-x-auto whitespace-nowrap">
-          {resolvedInitiativeId ? (
-            <>
-              <button onClick={() => navigate('/initiatives')} className="hover:text-[#4648d4] transition-colors">
-                Initiatives
-              </button>
-              <span className="text-[#e5e7eb]">/</span>
-              <Link to={`/initiatives/${resolvedInitiativeId}`} className="hover:text-[#4648d4] transition-colors truncate max-w-[180px]">
-                {action.initiative?.title || 'Initiative'}
-              </Link>
-            </>
-          ) : (
-            <button onClick={() => navigate('/command-center')} className="hover:text-[#4648d4] transition-colors">
-              Command Center
-            </button>
-          )}
+          <button
+            onClick={() => resolvedInitiativeId ? navigate(`/command-center?initiativeId=${resolvedInitiativeId}`) : navigate('/command-center')}
+            className="hover:text-[#4648d4] transition-colors"
+          >
+            Command Center
+          </button>
           <span className="text-[#e5e7eb]">/</span>
           <span className="text-[#374151] font-medium truncate max-w-[200px]">{action.title}</span>
         </nav>
@@ -265,7 +258,7 @@ export default function ActionDetailPage() {
                   {saving && <span className="text-[11px] text-[#9ca3af]">Saving...</span>}
                 </div>
                 <button
-                  onClick={() => resolvedInitiativeId ? navigate(`/initiatives/${resolvedInitiativeId}`) : navigate('/command-center')}
+                  onClick={() => resolvedInitiativeId ? navigate(`/command-center?initiativeId=${resolvedInitiativeId}`) : navigate('/command-center')}
                   className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] hover:bg-[#f0f0f0] rounded-lg transition-colors shrink-0"
                 >
                   <span className="material-symbols-outlined text-[18px]">arrow_back</span>
@@ -496,21 +489,22 @@ export default function ActionDetailPage() {
                 <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #f9fafb' }}>
                   <span className="text-[13px] text-[#6b7280]">Due Date</span>
                   <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => canEdit && dueDateRef.current?.showPicker?.()}
-                      disabled={!canEdit}
-                      className={cn('text-[13px] font-medium transition-colors', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]', canEdit && 'hover:text-[#4648d4]', !canEdit && 'cursor-default')}
-                    >
-                      {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className={canEdit ? 'text-[#9ca3af] font-normal' : 'text-[#d1d5db] font-normal'}>No due date</span>}
-                    </button>
+                    <div className="relative">
+                      <span className={cn('text-[13px] font-medium', isOverdue ? 'text-[#dc2626]' : 'text-[#111827]', !canEdit && 'cursor-default')}>
+                        {action.dueDate ? format(new Date(action.dueDate), 'MMM d, yyyy') : <span className={canEdit ? 'text-[#9ca3af] font-normal' : 'text-[#d1d5db] font-normal'}>No due date</span>}
+                      </span>
+                      {canEdit && (
+                        <input
+                          type="date"
+                          value={action.dueDate ? action.dueDate.split('T')[0] : ''}
+                          onChange={(e) => handleUpdate({ dueDate: e.target.value || null })}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      )}
+                    </div>
                     {action.dueDate && canEdit && (
                       <button onClick={() => handleUpdate({ dueDate: null })} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>
                     )}
-                    <input ref={dueDateRef} type="date"
-                      value={action.dueDate ? action.dueDate.split('T')[0] : ''}
-                      onChange={(e) => handleUpdate({ dueDate: e.target.value || null })}
-                      className="sr-only"
-                    />
                   </div>
                 </div>
 
@@ -603,9 +597,9 @@ export default function ActionDetailPage() {
                   </div>
                 </div>
 
-                {/* Creator */}
+                {/* Owner (defaults to creator) */}
                 <div className="flex items-center justify-between py-2">
-                  <span className="text-[13px] text-[#6b7280]">Created by</span>
+                  <span className="text-[13px] text-[#6b7280]">Owner</span>
                   <div className="flex items-center gap-2">
                     <Avatar name={action.creator?.name} avatar={action.creator?.avatar} size="xs" />
                     <span className="text-[13px] font-medium text-[#111827]">{action.creator?.name}</span>

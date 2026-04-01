@@ -10,11 +10,13 @@ import { Badge } from '@/components/ui/badge'
 import { usersApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { User, Bell, Shield, Save, Camera, LogOut } from 'lucide-react'
 
 export default function ProfilePage() {
   const { user, setUser, logout } = useAuthStore()
   const navigate = useNavigate()
+  const { permissionState, isSubscribed, isLoading: pushLoading, subscribe: subscribePush, unsubscribe: unsubscribePush, isSupported: pushSupported } = usePushNotifications()
   const [name, setName] = useState(user?.name || '')
   const [avatar, setAvatar] = useState<string | null>(user?.avatar || null)
   const [emailNotifications, setEmailNotifications] = useState(user?.emailNotifications ?? true)
@@ -186,6 +188,62 @@ export default function ProfilePage() {
                   />
                 </button>
               </div>
+
+              {/* Push Notifications */}
+              {pushSupported ? (
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">Push Notifications</p>
+                    <p className="text-xs text-muted-foreground">
+                      {permissionState === 'denied'
+                        ? 'Blocked by browser — enable in your browser settings'
+                        : 'Get notified even when the app is closed'}
+                    </p>
+                  </div>
+                  {permissionState === 'denied' ? (
+                    <Badge variant="secondary" className="text-xs">Blocked</Badge>
+                  ) : pushLoading ? (
+                    <div className="h-6 w-11 flex items-center justify-center">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isSubscribed}
+                      onClick={() => {
+                        if (isSubscribed) {
+                          unsubscribePush()
+                            .then(() => toast({ title: 'Push notifications disabled' }))
+                            .catch((err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }))
+                        } else {
+                          subscribePush()
+                            .then((subscribed) => {
+                              if (subscribed) toast({ title: 'Push notifications enabled!', description: "You'll be notified even when the app is closed." })
+                            })
+                            .catch((err: Error) => toast({ title: 'Could not enable push', description: err.message, variant: 'destructive' }))
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                        isSubscribed ? 'bg-primary' : 'bg-input'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isSubscribed ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 border rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground">
+                    Push notifications require a supported browser.
+                    {' '}On iOS, add the app to your home screen first, then enable here.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

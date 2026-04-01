@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { format, isBefore, differenceInDays } from 'date-fns'
@@ -48,7 +48,6 @@ export default function InitiativesPage() {
   const [deleting, setDeleting] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', status: 'active' })
   const [saving, setSaving] = useState(false)
-  const createDateRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
@@ -440,11 +439,11 @@ export default function InitiativesPage() {
       {/* Create Pane */}
       {showCreate && (
         <div
-          className="fixed inset-0 z-50 flex justify-end"
+          className="fixed inset-0 z-[60] flex justify-end"
           style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false) }}
         >
-          <div className="bg-white w-full sm:w-[440px] h-full shadow-2xl flex flex-col" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full sm:w-[440px] h-full shadow-2xl flex flex-col pt-14 sm:pt-0 pb-[110px] sm:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
@@ -464,8 +463,8 @@ export default function InitiativesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="flex-1 overflow-y-auto flex flex-col">
-              <div className="p-4 space-y-5 flex-1">
+            <form onSubmit={handleCreate} className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-4 space-y-5 flex-1 overflow-y-auto">
                 {/* Bare title input */}
                 <input
                   autoFocus
@@ -532,25 +531,22 @@ export default function InitiativesPage() {
                     <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                     <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => createDateRef.current?.showPicker?.()}
-                        className="text-[13px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors"
-                      >
-                        {form.dueDate ? format(new Date(form.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
-                      </button>
+                      <div className="relative">
+                        <span className="text-[13px] font-medium text-[#374151]">
+                          {form.dueDate ? format(new Date(form.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                        </span>
+                        <input
+                          type="date"
+                          value={form.dueDate}
+                          onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </div>
                       {form.dueDate && (
                         <button type="button" onClick={() => setForm((f) => ({ ...f, dueDate: '' }))}
                           className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none"
                         >×</button>
                       )}
-                      <input
-                        ref={createDateRef}
-                        type="date"
-                        value={form.dueDate}
-                        onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                        className="sr-only"
-                      />
                     </div>
                   </div>
                 </div>

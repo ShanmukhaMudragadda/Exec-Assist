@@ -168,7 +168,6 @@ export default function InitiativeDetailPage() {
   const assigneeBtnRef = useRef<HTMLButtonElement>(null)
   const assigneePortalRef = useRef<HTMLDivElement>(null)
   const [assigneeBtnRect, setAssigneeBtnRect] = useState<DOMRect | null>(null)
-  const actionDateRef = useRef<HTMLInputElement>(null)
   const [editingAiIndex, setEditingAiIndex] = useState<number | null>(null)
   const [savingNotif, setSavingNotif] = useState(false)
   const [extraActions, setExtraActions] = useState<any[]>([])
@@ -317,6 +316,7 @@ export default function InitiativeDetailPage() {
     try {
       await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeId: actionForm.assigneeId || null, tagIds: actionForm.tagIds })
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setShowAddAction(false)
       setActionForm({ title: '', description: '', priority: 'medium', dueDate: '', assigneeId: '', tagIds: [] })
     } finally { setSaving(false) }
@@ -337,6 +337,7 @@ export default function InitiativeDetailPage() {
     try {
       await actionsApi.bulkCreate(initiativeId, generatedActions)
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setAiMode(false); setTranscript(''); setGeneratedActions([])
     } finally { setBulkSaving(false) }
   }
@@ -345,6 +346,7 @@ export default function InitiativeDetailPage() {
     try {
       await actionsApi.update(actionId, { status })
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
     } catch {}
   }
 
@@ -352,6 +354,7 @@ export default function InitiativeDetailPage() {
     try {
       await actionsApi.delete(actionId)
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setConfirmDeleteActionId(null)
     } catch {}
   }
@@ -459,6 +462,12 @@ export default function InitiativeDetailPage() {
                   <div className={cn('h-full rounded-full transition-all', progressColor)} style={{ width: `${initiative.progress || 0}%` }} />
                 </div>
                 <span className="text-[12px] font-semibold text-[#6b7280] tabular-nums">{initiative.progress || 0}%</span>
+              </div>
+              {/* Owner */}
+              <div className="flex items-center gap-1.5 mt-2">
+                <Avatar name={initiative.creator.name} avatar={initiative.creator.avatar || null} size="xs" />
+                <span className="text-[12px] text-[#9ca3af]">Owner:</span>
+                <span className="text-[12px] font-semibold text-[#374151]">{initiative.creator.name}</span>
               </div>
             </div>
 
@@ -886,11 +895,11 @@ export default function InitiativeDetailPage() {
       {/* ── Add Action Pane ─────────────────────────────────────────────────── */}
       {showAddAction && (
         <div
-          className="fixed inset-0 z-50 flex justify-end"
+          className="fixed inset-0 z-[60] flex justify-end"
           style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowAddAction(false) }}
         >
-          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
@@ -910,8 +919,8 @@ export default function InitiativeDetailPage() {
               </button>
             </div>
 
-            <form onSubmit={handleAddAction} className="flex-1 overflow-y-auto flex flex-col">
-              <div className="p-4 space-y-5 flex-1">
+            <form onSubmit={handleAddAction} className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-4 space-y-5 flex-1 overflow-y-auto">
                 {/* Title */}
                 <div>
                   <input
@@ -964,25 +973,22 @@ export default function InitiativeDetailPage() {
                     <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">event</span>
                     <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Due Date</span>
                     <div className="flex items-center gap-2 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => actionDateRef.current?.showPicker?.()}
-                        className="text-[13px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors"
-                      >
-                        {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
-                      </button>
+                      <div className="relative">
+                        <span className="text-[13px] font-medium text-[#374151]">
+                          {actionForm.dueDate ? format(new Date(actionForm.dueDate + 'T00:00:00'), 'MMM d, yyyy') : <span className="text-[#9ca3af]">Pick a date</span>}
+                        </span>
+                        <input
+                          type="date"
+                          value={actionForm.dueDate}
+                          onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </div>
                       {actionForm.dueDate && (
                         <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))}
                           className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none"
                         >×</button>
                       )}
-                      <input
-                        ref={actionDateRef}
-                        type="date"
-                        value={actionForm.dueDate}
-                        onChange={(e) => setActionForm((f) => ({ ...f, dueDate: e.target.value }))}
-                        className="sr-only"
-                      />
                     </div>
                   </div>
 
@@ -1093,11 +1099,11 @@ export default function InitiativeDetailPage() {
       {/* ── Settings Pane ───────────────────────────────────────────────────── */}
       {showSettings && (
         <div
-          className="fixed inset-0 z-50 flex justify-end"
+          className="fixed inset-0 z-[60] flex justify-end"
           style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false) }}
         >
-          <div className="bg-white w-full md:w-[400px] h-full shadow-2xl flex flex-col pt-14 md:pt-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full md:w-[400px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
@@ -1318,11 +1324,11 @@ export default function InitiativeDetailPage() {
       {/* ── AI Generate Drawer ─────────────────────────────────────────────── */}
       {aiMode && (
         <div
-          className="fixed inset-0 z-50 flex justify-end"
+          className="fixed inset-0 z-[60] flex justify-end"
           style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setAiMode(false); setGeneratedActions([]) } }}
         >
-          <div className="bg-white w-full md:w-[500px] h-full shadow-2xl flex flex-col pt-14 md:pt-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full md:w-[500px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
@@ -1339,12 +1345,12 @@ export default function InitiativeDetailPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto flex flex-col">
+            <div className="flex-1 flex flex-col overflow-hidden">
               {generatedActions.length === 0 ? (
-                <div className="p-4 flex flex-col gap-4 flex-1">
-                  <textarea rows={14} placeholder="Paste your meeting transcript, notes, or voice recording text here...&#10;&#10;AI will extract action items, assign them to team members by name or department, and detect priorities and deadlines."
+                <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
+                  <textarea rows={8} placeholder="Paste your meeting transcript, notes, or voice recording text here...&#10;&#10;AI will extract action items, assign them to team members by name or department, and detect priorities and deadlines."
                     value={transcript} onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full flex-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none resize-none placeholder:text-[#9ca3af] leading-relaxed"
+                    className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none resize-none placeholder:text-[#9ca3af] leading-relaxed"
                   />
                   <button onClick={handleGenerateActions} disabled={generating || !transcript.trim()}
                     className="w-full h-10 bg-[#4648d4] text-white font-semibold rounded-xl hover:bg-[#3730a3] transition-colors disabled:opacity-40 flex items-center justify-center gap-2 text-[14px]"

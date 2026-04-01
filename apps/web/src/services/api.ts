@@ -100,6 +100,8 @@ export const actionsApi = {
     api.post(`/initiatives/${initiativeId}/actions/generate`, data),
   generateStandalone: (content: string) =>
     api.post('/actions/generate', { content }),
+  transcribeAudio: (audio: string, mimeType: string) =>
+    api.post('/transcribe', { audio, mimeType }),
   update: (actionId: string, data: Partial<{
     title: string; description: string | null; status: string; priority: string;
     dueDate: string | null; assigneeId: string | null; tagIds: string[];
@@ -109,10 +111,19 @@ export const actionsApi = {
   getCommandCenter: (cursor?: string) => api.get('/command-center', { params: cursor ? { cursor } : {} }),
   listForInitiative: (initiativeId: string, cursor: string) =>
     api.get(`/initiatives/${initiativeId}/actions`, { params: { cursor } }),
-  getExecutiveBrief: () => api.get('/executive-brief'),
+  getExecutiveBrief: (refresh = false) => api.get('/executive-brief', { params: refresh ? { refresh: 'true' } : {} }),
   getDetail: (actionId: string) => api.get(`/actions/${actionId}`),
   addUpdate: (actionId: string, content: string) =>
     api.post(`/actions/${actionId}/updates`, { content }),
   editUpdate: (actionId: string, updateId: string, content: string) =>
     api.patch(`/actions/${actionId}/updates/${updateId}`, { content }),
+}
+
+// ── Push Notifications ────────────────────────────────────────────────────────
+export const pushApi = {
+  getVapidKey: () => api.get<{ key: string }>('/push/vapid-public-key'),
+  subscribe: (data: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent?: string }) =>
+    api.post('/push/subscribe', data),
+  unsubscribe: (endpoint?: string) =>
+    api.delete('/push/unsubscribe', { data: { endpoint } }),
 }

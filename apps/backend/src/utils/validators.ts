@@ -58,5 +58,7 @@ export const UpdateProfileSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   avatar: z.union([z.string().url(), z.string().startsWith('data:image/')]).optional().nullable(),
   timezone: z.string().optional(),
+  emailNotifications: z.boolean().optional(),
+  pushNotificationsEnabled: z.boolean().optional(),
 });
 

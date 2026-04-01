@@ -2,8 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GoogleOAuthProvider } from '@react-oauth/google'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import './index.css'
+
+// Register service worker (handles updates automatically)
+registerSW({ immediate: true })
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -12,8 +12,11 @@ dotenv.config();
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import initiativeRoutes from './routes/initiativeRoutes';
+import transcriptRoutes from './routes/transcriptRoutes';
+import pushRoutes from './routes/pushRoutes';
 import { errorHandler } from './middleware/errorHandler';
 import { scheduleDailyReports } from './queue/emailQueue';
+import { initWebPush } from './services/pushService';
 
 const app = express();
 const httpServer = createServer(app);
@@ -63,6 +66,8 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/', initiativeRoutes);
+app.use('/', transcriptRoutes);
+app.use('/push', pushRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -89,8 +94,9 @@ io.on('connection', (socket) => {
 // Error handler
 app.use(errorHandler);
 
-// Start daily report scheduler
+// Start daily report scheduler and init push notifications
 scheduleDailyReports();
+initWebPush();
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {

@@ -57,9 +57,14 @@ export default function UploadDataPage() {
   const [interimText, setInterimText] = useState('')
   const [recordError, setRecordError] = useState('')
   const [recordSeconds, setRecordSeconds] = useState(0)
+  const [transcribing, setTranscribing] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const sheetsFileRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const periodicTranscribeRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const geminiModeRef = useRef(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -100,6 +105,7 @@ export default function UploadDataPage() {
 
   const startVisualizer = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('no getUserMedia')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       micStreamRef.current = stream
       const audioCtx = new AudioContext()
@@ -189,6 +195,21 @@ export default function UploadDataPage() {
     return () => ro.disconnect()
   }, [])
 
+  const runGeminiTranscribe = async () => {
+    const mr = mediaRecorderRef.current
+    if (!mr || audioChunksRef.current.length === 0) return
+    try { mr.requestData() } catch {}
+    const blob = new Blob(audioChunksRef.current, { type: mr.mimeType })
+    const base64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.readAsDataURL(blob)
+    })
+    const res = await actionsApi.transcribeAudio(base64, mr.mimeType)
+    const text: string = (res.data as any)?.transcript || ''
+    if (text) setTranscript(text)
+  }
+
   const setMode = (m: UploadMode) => {
     const next = new URLSearchParams(searchParams)
     next.set('mode', m)
@@ -200,12 +221,33 @@ export default function UploadDataPage() {
   }
 
   const startRecording = () => {
+    setRecordError('')
+    audioChunksRef.current = []
+
+    // Start MediaRecorder for audio capture (fallback for browsers that block SpeechRecognition)
+    // navigator.mediaDevices is undefined on mobile over HTTP — guard against that
+    if (navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        .then((stream) => {
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+            : MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : 'audio/mp4'
+          const mr = new MediaRecorder(stream, { mimeType })
+          mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+          mr.start(1000)
+          mediaRecorderRef.current = mr
+        })
+        .catch(() => { /* mic permission denied — SpeechRecognition error will handle it */ })
+    }
+
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognitionClass) {
-      setRecordError('Speech recognition is not supported in this browser. Please use Chrome or Safari.')
+      // No SpeechRecognition at all — rely solely on MediaRecorder + Gemini
+      setRecording(true)
+      setRecordSeconds(0)
+      timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000)
+      startVisualizer()
       return
     }
-    setRecordError('')
     const recognition = new SpeechRecognitionClass()
     recognition.continuous = true
     recognition.interimResults = true
@@ -235,8 +277,23 @@ export default function UploadDataPage() {
         setInterimText('')
         stopVisualizer()
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      } else if (err === 'service-not-allowed') {
+        setRecordError('Voice recording requires a secure (HTTPS) connection. Please use the transcript mode to paste text instead.')
+        recognitionRef.current = null
+        setRecording(false)
+        setInterimText('')
+        stopVisualizer()
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
       } else if (err === 'no-speech') {
         // no-speech is not a real error — recognition will fire onend and we'll restart
+      } else if (err === 'network') {
+        // Browser blocks Google's speech servers (e.g. Brave) — switch to Gemini periodic mode
+        recognitionRef.current = null
+        geminiModeRef.current = true
+        // Update transcript every 10 seconds via Gemini
+        periodicTranscribeRef.current = setInterval(() => {
+          runGeminiTranscribe().catch(() => {})
+        }, 10000)
       } else {
         setRecordError(`Recording error: ${err}`)
         recognitionRef.current = null
@@ -266,12 +323,47 @@ export default function UploadDataPage() {
   }
 
   const stopRecording = () => {
+    const hadSpeechTranscript = transcript.trim().length > 0 && !geminiModeRef.current
+
     recognitionRef.current?.stop()
     recognitionRef.current = null
     setRecording(false)
     setInterimText('')
     stopVisualizer()
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    if (periodicTranscribeRef.current) { clearInterval(periodicTranscribeRef.current); periodicTranscribeRef.current = null }
+    geminiModeRef.current = false
+
+    // Stop MediaRecorder and do final Gemini transcription if SpeechRecognition didn't produce text
+    const mr = mediaRecorderRef.current
+    if (mr && mr.state !== 'inactive') {
+      mr.onstop = async () => {
+        mediaRecorderRef.current = null
+        if (hadSpeechTranscript) return
+        if (audioChunksRef.current.length === 0) return
+
+        setTranscribing(true)
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: mr.mimeType })
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve((reader.result as string).split(',')[1])
+            reader.readAsDataURL(blob)
+          })
+          const res = await actionsApi.transcribeAudio(base64, mr.mimeType)
+          const text: string = (res.data as any)?.transcript || ''
+          if (text) setTranscript(text)
+          else setRecordError('Could not transcribe audio. Please try again or paste text manually.')
+        } catch {
+          setRecordError('Transcription failed. Please paste your text manually.')
+        } finally {
+          setTranscribing(false)
+          audioChunksRef.current = []
+          mr.stream?.getTracks().forEach((t) => t.stop())
+        }
+      }
+      mr.stop()
+    }
   }
 
   const handleGenerate = async () => {
@@ -293,7 +385,8 @@ export default function UploadDataPage() {
     try {
       await actionsApi.bulkCreate(initiativeId, generatedActions)
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
-      navigate(initiativeId ? `/initiatives/${initiativeId}` : '/initiatives')
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      navigate(initiativeId ? `/command-center?initiativeId=${initiativeId}` : '/command-center')
     } finally {
       setSaving(false)
     }
@@ -356,31 +449,33 @@ export default function UploadDataPage() {
                     />
                   </div>
 
-                  {/* Drop zone */}
-                  <div
-                    onClick={() => fileRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={(e) => { e.preventDefault(); setDragOver(false) }}
-                    className={cn(
-                      'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all',
-                      dragOver ? 'border-[#4648d4] bg-[#ede9fe]/20' : 'border-[#e5e7eb] bg-[#f7f9fb] hover:border-[#4648d4]/50'
-                    )}
-                  >
-                    <span className="material-symbols-outlined text-3xl text-[#9ca3af] block mb-2">cloud_upload</span>
-                    <p className="text-sm font-semibold text-[#374151]">Drop file here or <span className="text-[#4648d4]">browse</span></p>
-                    <p className="text-[12px] text-[#9ca3af] mt-1">PDF · DOCX · TXT (max 50MB)</p>
-                    <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" />
-                  </div>
+                  {/* Drop zone — hidden on mobile (file drag is desktop-only) */}
+                  <div className="hidden sm:block space-y-5">
+                    <div
+                      onClick={() => fileRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={(e) => { e.preventDefault(); setDragOver(false) }}
+                      className={cn(
+                        'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all',
+                        dragOver ? 'border-[#4648d4] bg-[#ede9fe]/20' : 'border-[#e5e7eb] bg-[#f7f9fb] hover:border-[#4648d4]/50'
+                      )}
+                    >
+                      <span className="material-symbols-outlined text-3xl text-[#9ca3af] block mb-2">cloud_upload</span>
+                      <p className="text-sm font-semibold text-[#374151]">Drop file here or <span className="text-[#4648d4]">browse</span></p>
+                      <p className="text-[12px] text-[#9ca3af] mt-1">PDF · DOCX · TXT (max 50MB)</p>
+                      <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" />
+                    </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-[#e5e7eb]" />
-                    <span className="text-[12px] text-[#9ca3af] font-bold uppercase tracking-widest">or paste text</span>
-                    <div className="flex-1 h-px bg-[#e5e7eb]" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-[#e5e7eb]" />
+                      <span className="text-[12px] text-[#9ca3af] font-bold uppercase tracking-widest">or paste text</span>
+                      <div className="flex-1 h-px bg-[#e5e7eb]" />
+                    </div>
                   </div>
 
                   <textarea
-                    rows={8} placeholder="Paste your meeting transcript or notes here..."
+                    rows={5} placeholder="Paste your meeting transcript or notes here..."
                     value={transcript} onChange={(e) => setTranscript(e.target.value)}
                     className="w-full bg-white border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] text-[#111827] focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] focus:outline-none resize-none transition-all placeholder:text-[#c4c4c4]"
                   />
@@ -444,7 +539,7 @@ export default function UploadDataPage() {
                           recording ? 'bg-[#dc2626] animate-pulse' : 'bg-[#d1d5db]'
                         )} />
                         <span className={cn('text-[12px] font-bold uppercase tracking-widest', recording ? 'text-[#4648d4]' : 'text-[#9ca3af]')}>
-                          {recording ? 'Recording' : 'Idle'}
+                          {recording ? (geminiModeRef.current ? 'Recording · AI Transcript' : 'Recording') : 'Idle'}
                         </span>
                       </div>
                       {recording && (
@@ -489,26 +584,37 @@ export default function UploadDataPage() {
                   )}
 
                   {/* Live transcript box */}
-                  {(transcript || interimText || recording) && (
+                  {(transcript || interimText || recording || transcribing) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-widest">Live Transcript</label>
-                        {transcript && (
+                        {transcript && !transcribing && (
                           <button onClick={() => setTranscript('')} className="text-[11px] text-[#9ca3af] hover:text-[#dc2626] transition-colors">Clear</button>
                         )}
                       </div>
                       <div className="min-h-[120px] max-h-[240px] overflow-y-auto bg-[#f9fafb] border border-[#e5e7eb] rounded-xl px-4 py-3 text-[14px] leading-relaxed">
-                        <span className="text-[#111827]">{transcript}</span>
-                        {interimText && <span className="text-[#9ca3af] italic">{interimText}</span>}
-                        {recording && !transcript && !interimText && (
-                          <span className="text-[#9ca3af] italic">Listening…</span>
+                        {transcribing ? (
+                          <div className="flex items-center gap-2 text-[#9ca3af] italic">
+                            <div className="w-3 h-3 border-2 border-[#9ca3af]/30 border-t-[#9ca3af] rounded-full animate-spin shrink-0" />
+                            Transcribing audio with AI…
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-[#111827]">{transcript}</span>
+                            {interimText && <span className="text-[#9ca3af] italic">{interimText}</span>}
+                            {recording && !transcript && !interimText && (
+                              <span className="text-[#9ca3af] italic">
+                                {geminiModeRef.current ? 'Recording… transcript updates every ~10s' : 'Listening…'}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   )}
 
                   {/* Generate from live transcript */}
-                  {transcript && !recording && (
+                  {transcript && !recording && !transcribing && (
                     <button
                       onClick={handleGenerate}
                       disabled={generating}

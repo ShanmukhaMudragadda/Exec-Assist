@@ -1,5 +1,7 @@
+import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { sendEmail } from '../services/emailService';
+import { sendPushNotification, sendPushToAll } from '../services/pushService';
 
 const prisma = new PrismaClient();
 
@@ -28,10 +30,61 @@ export const queueActionAssignmentEmail = async (
   }).catch((err) => console.error('Action assignment email failed:', err));
 };
 
-// Send daily reports for all initiatives that have it enabled
 export const scheduleDailyReports = (): void => {
-  // Daily reports are initiative-level — scheduled via node-cron in a future expansion
   console.log('Daily report scheduler initialized');
+
+  // ── Morning Brief Push — every day at 08:00 UTC ──────────────────────────
+  cron.schedule('0 8 * * *', async () => {
+    console.log('[cron] Sending morning brief push notifications');
+    try {
+      await sendPushToAll(
+        {
+          title: 'Good morning — your brief is ready',
+          body: "Check your executive brief for today's priorities.",
+          url: '/dashboard',
+          tag: 'morning-brief',
+        },
+        { onlyEnabled: true }
+      );
+    } catch (err) {
+      console.error('[cron] Morning brief push failed:', err);
+    }
+  }, { timezone: 'UTC' });
+
+  // ── Due-Date Reminder — every day at 07:00 UTC ───────────────────────────
+  cron.schedule('0 7 * * *', async () => {
+    console.log('[cron] Sending due-date reminder push notifications');
+    try {
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const start = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), 0, 0, 0));
+      const end = new Date(Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), 23, 59, 59));
+
+      const dueTomorrow = await prisma.action.findMany({
+        where: {
+          dueDate: { gte: start, lte: end },
+          status: { not: 'completed' },
+          assigneeId: { not: null },
+          assignee: { pushNotificationsEnabled: true },
+        },
+        select: { id: true, title: true, initiativeId: true, assigneeId: true },
+      });
+
+      for (const action of dueTomorrow) {
+        if (!action.assigneeId) continue;
+        await sendPushNotification(action.assigneeId, {
+          title: 'Due Tomorrow',
+          body: action.title,
+          url: action.initiativeId
+            ? `/initiatives/${action.initiativeId}`
+            : '/command-center',
+          tag: `due-tomorrow-${action.id}`,
+        });
+      }
+    } catch (err) {
+      console.error('[cron] Due-date reminder push failed:', err);
+    }
+  }, { timezone: 'UTC' });
 };
 
 // Send daily digest for a specific initiative to configured emails

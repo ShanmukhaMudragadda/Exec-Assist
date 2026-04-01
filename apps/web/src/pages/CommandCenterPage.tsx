@@ -59,7 +59,6 @@ export default function CommandCenterPage() {
   const [newPriority, setNewPriority] = useState('medium')
   const [newDueDate, setNewDueDate] = useState('')
   const [creating, setCreating] = useState(false)
-  const newDateRef = useRef<HTMLInputElement>(null)
   // AI pane state
   const [transcript, setTranscript] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -473,10 +472,10 @@ export default function CommandCenterPage() {
 
       {/* AI Generate pane */}
       {showAi && (
-        <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
+        <div className="fixed inset-0 z-[60] flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setShowAi(false); setTranscript(''); setGeneratedActions([]) } }}
         >
-          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
@@ -590,10 +589,10 @@ export default function CommandCenterPage() {
 
       {/* Create Action slide-in pane */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
+        <div className="fixed inset-0 z-[60] flex justify-end" style={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => { if (e.target === e.currentTarget) resetPane() }}
         >
-          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
+          <div className="bg-white w-full md:w-[440px] h-full shadow-2xl flex flex-col pt-14 md:pt-0 pb-[110px] md:pb-0" style={{ borderLeft: '1px solid #f0f0f0' }}>
             <div className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: '1px solid #f3f4f6' }}>
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
@@ -631,13 +630,13 @@ export default function CommandCenterPage() {
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-[18px] text-[#9ca3af]">calendar_today</span>
                 <span className="text-[13px] text-[#6b7280] w-20 shrink-0">Due Date</span>
-                <button onClick={() => newDateRef.current?.showPicker?.()}
-                  className="text-[13px] font-medium text-[#111827] hover:text-[#4648d4] transition-colors"
-                >
-                  {newDueDate ? format(new Date(newDueDate), 'MMM d, yyyy') : <span className="text-[#9ca3af] font-normal">Pick a date</span>}
-                </button>
+                <div className="relative">
+                  <span className="text-[13px] font-medium text-[#111827]">
+                    {newDueDate ? format(new Date(newDueDate), 'MMM d, yyyy') : <span className="text-[#9ca3af] font-normal">Pick a date</span>}
+                  </span>
+                  <input type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                </div>
                 {newDueDate && <button onClick={() => setNewDueDate('')} className="text-[#9ca3af] hover:text-[#dc2626] text-[15px] leading-none">×</button>}
-                <input ref={newDateRef} type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} className="sr-only" />
               </div>
               <p className="text-[12px] text-[#9ca3af] bg-[#f9fafb] rounded-lg px-3 py-2">
                 This action will appear in your Command Center. You can link it to an initiative later from the action detail page.

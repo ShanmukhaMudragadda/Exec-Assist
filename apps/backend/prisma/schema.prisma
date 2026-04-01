@@ -17,9 +17,10 @@ model User {
   avatar              String?
   role                String    @default("user")
   emailVerified       Boolean   @default(false)
-  timezone            String?   @default("UTC")
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  timezone                 String?   @default("UTC")
+  pushNotificationsEnabled Boolean   @default(true)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   createdInitiatives  Initiative[]
   initiativeMembers   InitiativeMember[]
@@ -27,6 +28,7 @@ model User {
   createdActions      Action[]
   assignedActions     Action[]               @relation("ActionAssignee")
   actionUpdates       ActionUpdate[]
+  pushSubscriptions   PushSubscription[]
 }
 
 model Initiative {
@@ -145,4 +147,18 @@ model ActionUpdate {
 
   action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

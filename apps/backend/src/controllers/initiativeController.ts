@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { sendPushNotification } from '../services/pushService';
 
 const prisma = new PrismaClient();
 
@@ -243,6 +244,28 @@ export const updateInitiative = async (req: AuthRequest, res: Response) => {
       include: { creator: { select: { id: true, name: true, avatar: true } } },
     });
 
+    // Notify all members on status change (skip the person making the change)
+    if (data.status) {
+      prisma.initiativeMember
+        .findMany({
+          where: { initiativeId, userId: { not: userId } },
+          include: { user: { select: { id: true, pushNotificationsEnabled: true } } },
+        })
+        .then((members) =>
+          members
+            .filter((m) => m.user.pushNotificationsEnabled)
+            .forEach((m) =>
+              sendPushNotification(m.userId, {
+                title: 'Initiative Status Updated',
+                body: `"${updated.title}" is now ${data.status}`,
+                url: `/initiatives/${initiativeId}`,
+                tag: `initiative-status-${initiativeId}`,
+              }).catch((err) => console.error('[push] initiative status push failed:', err))
+            )
+        )
+        .catch(console.error);
+    }
+
     return res.json({ initiative: updated });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -260,7 +283,26 @@ export const deleteInitiative = async (req: AuthRequest, res: Response) => {
     if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
     if (initiative.createdBy !== userId) return res.status(403).json({ error: 'Only the creator can delete' });
 
+    // Fetch members to notify before cascade delete removes them
+    const membersToNotify = await prisma.initiativeMember.findMany({
+      where: { initiativeId, userId: { not: userId } },
+      include: { user: { select: { id: true, pushNotificationsEnabled: true } } },
+    });
+
     await prisma.initiative.delete({ where: { id: initiativeId } });
+
+    // Notify all former members (fire-and-forget)
+    membersToNotify
+      .filter((m) => m.user.pushNotificationsEnabled)
+      .forEach((m) =>
+        sendPushNotification(m.userId, {
+          title: 'Initiative Removed',
+          body: `"${initiative.title}" has been deleted`,
+          url: '/dashboard',
+          tag: `initiative-deleted-${initiativeId}`,
+        }).catch((err) => console.error('[push] initiative delete push failed:', err))
+      );
+
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -336,7 +378,23 @@ export const removeMember = async (req: AuthRequest, res: Response) => {
     if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
     if (initiative.createdBy !== userId) return res.status(403).json({ error: 'Only the creator can remove members' });
 
+    // Fetch member's notification preference before removing
+    const removedUser = await prisma.user.findUnique({
+      where: { id: memberId },
+      select: { pushNotificationsEnabled: true },
+    });
+
     await prisma.initiativeMember.deleteMany({ where: { initiativeId, userId: memberId } });
+
+    if (removedUser?.pushNotificationsEnabled) {
+      sendPushNotification(memberId, {
+        title: 'Removed from Initiative',
+        body: `You've been removed from "${initiative.title}"`,
+        url: '/dashboard',
+        tag: `member-removed-${initiativeId}`,
+      }).catch((err) => console.error('[push] member removed push failed:', err));
+    }
+
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -382,6 +440,16 @@ export const addMember = async (req: AuthRequest, res: Response) => {
 
       sendMemberAddedEmail(data.email, initiativeTitle, inviterName, initiativeId)
         .catch((err: unknown) => console.error('Member added email failed:', err));
+
+      // Push notification to the added user
+      if (existingUser.pushNotificationsEnabled) {
+        sendPushNotification(existingUser.id, {
+          title: 'Added to Initiative',
+          body: `${inviterName} added you to "${initiativeTitle}"`,
+          url: `/initiatives/${initiativeId}`,
+          tag: `member-added-${initiativeId}`,
+        }).catch((err) => console.error('[push] member added push failed:', err));
+      }
 
       return res.status(201).json({ member, pending: null });
     }

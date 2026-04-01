@@ -1,9 +1,11 @@
 import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { z } from 'zod';
+import { any, z } from 'zod';
 import { randomUUID } from 'crypto';
 import { AuthRequest } from '../middleware/auth';
 import { sendMentionNotificationEmail } from '../services/emailService';
+import { queueActionAssignmentEmail } from '../queue/emailQueue';
+import { sendPushNotification } from '../services/pushService';
 
 /** Extract unique userIds from @[Name](userId) mention tokens */
 function parseMentionIds(content: string): string[] {
@@ -20,13 +22,24 @@ async function notifyMentions(content: string, posterId: string, actionId: strin
   const [action, poster, mentionedUsers] = await Promise.all([
     prisma.action.findUnique({ where: { id: actionId }, select: { title: true, initiativeId: true } }),
     prisma.user.findUnique({ where: { id: posterId }, select: { name: true } }),
-    prisma.user.findMany({ where: { id: { in: mentionedIds } }, select: { id: true, name: true, email: true } }),
+    prisma.user.findMany({ where: { id: { in: mentionedIds } }, select: { id: true, name: true, email: true, pushNotificationsEnabled: true } }),
   ]);
   if (!action || !poster) return;
   await Promise.all(
     mentionedUsers
       .filter((u) => u.id !== posterId)
-      .map((u) => sendMentionNotificationEmail(u.email, u.name, poster.name, action.title, actionId, action.initiativeId, content))
+      .map((u) => {
+        const emailP = sendMentionNotificationEmail(u.email, u.name, poster.name, action.title, actionId, action.initiativeId, content);
+        const pushP = u.pushNotificationsEnabled
+          ? sendPushNotification(u.id, {
+              title: `${poster.name} mentioned you`,
+              body: `In "${action.title}"`,
+              url: action.initiativeId ? `/initiatives/${action.initiativeId}` : '/command-center',
+              tag: `mention-${actionId}`,
+            }).catch(console.error)
+          : Promise.resolve();
+        return Promise.all([emailP, pushP]);
+      })
   );
 }
 
@@ -134,6 +147,25 @@ export const createAction = async (req: AuthRequest, res: Response) => {
       include: ACTION_INCLUDE,
     });
 
+    // Notify assignee via email + push (skip if self-assigned)
+    if (action.assigneeId && action.assigneeId !== userId) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: action.assigneeId },
+        select: { email: true, name: true, pushNotificationsEnabled: true },
+      });
+      if (assignee) {
+        queueActionAssignmentEmail(assignee.email, assignee.name, action.title, action.id, action.initiativeId ?? '');
+        if (assignee.pushNotificationsEnabled) {
+          sendPushNotification(action.assigneeId, {
+            title: 'New Action Assigned',
+            body: action.title,
+            url: action.initiativeId ? `/initiatives/${action.initiativeId}` : '/command-center',
+            tag: `action-assigned-${action.id}`,
+          }).catch((err) => console.error('[push] action assign push failed:', err));
+        }
+      }
+    }
+
     return res.status(201).json({ action });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -200,6 +232,31 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
       })
     );
 
+    // Notify each unique assignee of their newly assigned actions (skip self-assigned)
+    const assigneeGroups = new Map<string, string[]>();
+    for (const a of created) {
+      if (a.assigneeId && a.assigneeId !== userId) {
+        if (!assigneeGroups.has(a.assigneeId)) assigneeGroups.set(a.assigneeId, []);
+        assigneeGroups.get(a.assigneeId)!.push(a.title);
+      }
+    }
+    if (assigneeGroups.size) {
+      prisma.user
+        .findMany({ where: { id: { in: [...assigneeGroups.keys()] }, pushNotificationsEnabled: true }, select: { id: true } })
+        .then((users) =>
+          users.forEach((u) => {
+            const titles = assigneeGroups.get(u.id)!;
+            sendPushNotification(u.id, {
+              title: 'New Actions Assigned',
+              body: titles.length === 1 ? titles[0] : `${titles.length} new actions assigned to you`,
+              url: `/initiatives/${initiativeId}`,
+              tag: `bulk-assigned-${initiativeId}`,
+            }).catch((err) => console.error('[push] bulk assign push failed:', err));
+          })
+        )
+        .catch(console.error);
+    }
+
     return res.status(201).json({ actions: created, count: created.length });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -216,6 +273,7 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
 
     const action = await prisma.action.findUnique({ where: { id: actionId } });
     if (!action) return res.status(404).json({ error: 'Action not found' });
+    const previousAssigneeId = action.assigneeId;
 
     const { ok, canModify } = await canAccessAction(userId, action);
     if (!ok || !canModify) {
@@ -248,6 +306,51 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
       },
       include: ACTION_INCLUDE,
     });
+
+    // Notify new assignee if reassigned (skip if self-assigned)
+    const newAssigneeId = updated.assigneeId;
+    if (newAssigneeId && newAssigneeId !== previousAssigneeId && newAssigneeId !== userId) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: newAssigneeId },
+        select: { email: true, name: true, pushNotificationsEnabled: true },
+      });
+      if (assignee) {
+        queueActionAssignmentEmail(assignee.email, assignee.name, updated.title, updated.id, updated.initiativeId ?? '');
+        if (assignee.pushNotificationsEnabled) {
+          sendPushNotification(newAssigneeId, {
+            title: 'New Action Assigned',
+            body: updated.title,
+            url: updated.initiativeId ? `/initiatives/${updated.initiativeId}` : '/command-center',
+            tag: `action-assigned-${updated.id}`,
+          }).catch((err) => console.error('[push] reassign push failed:', err));
+        }
+      }
+    }
+
+    // Notify creator and assignee on status change (skip the person making the change)
+    if (data.status && data.status !== action.status) {
+      const statusLabel: Record<string, string> = {
+        'todo': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', 'completed': 'Completed',
+      };
+      const notifyIds = new Set<string>();
+      if (updated.createdBy !== userId) notifyIds.add(updated.createdBy);
+      if (updated.assigneeId && updated.assigneeId !== userId) notifyIds.add(updated.assigneeId);
+      if (notifyIds.size) {
+        prisma.user
+          .findMany({ where: { id: { in: [...notifyIds] }, pushNotificationsEnabled: true }, select: { id: true } })
+          .then((users) =>
+            users.forEach((u) =>
+              sendPushNotification(u.id, {
+                title: data.status === 'completed' ? '✅ Action Completed' : 'Action Status Updated',
+                body: `"${updated.title}" → ${statusLabel[data.status!] ?? data.status}`,
+                url: updated.initiativeId ? `/initiatives/${updated.initiativeId}` : '/command-center',
+                tag: `action-status-${updated.id}`,
+              }).catch((err) => console.error('[push] status change push failed:', err))
+            )
+          )
+          .catch(console.error);
+      }
+    }
 
     return res.json({ action: updated });
   } catch (err) {
@@ -402,9 +505,21 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
   }
 };
 
+// Per-user cache: only call AI once per day (resets at midnight or on manual refresh)
+const briefCache = new Map<string, { brief: string; date: string }>();
+
 export const getExecutiveBrief = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
+    const forceRefresh = req.query.refresh === 'true';
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // Return cached brief if same day and not a forced refresh
+    const cached = briefCache.get(userId);
+    if (!forceRefresh && cached && cached.date === today) {
+      return res.json({ brief: cached.brief });
+    }
+
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
 
     const userInitiatives = await prisma.initiative.findMany({
@@ -447,6 +562,8 @@ export const getExecutiveBrief = async (req: AuthRequest, res: Response) => {
 
     const { generateExecutiveBrief } = await import('../services/AIService');
     const brief = await generateExecutiveBrief(ctx);
+
+    briefCache.set(userId, { brief: brief as any, date: today });
     return res.json({ brief });
   } catch (err) {
     console.error(err);
@@ -573,6 +690,28 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
         include: { user: { select: { id: true, name: true, avatar: true } } },
       });
       notifyMentions(content.trim(), userId, actionId).catch(console.error);
+
+      // Notify action creator and assignee about new comment (skip the commenter)
+      const notifyIds = new Set<string>();
+      if (action.createdBy !== userId) notifyIds.add(action.createdBy);
+      if (action.assigneeId && action.assigneeId !== userId) notifyIds.add(action.assigneeId);
+      if (notifyIds.size) {
+        const poster = update.user as { name: string };
+        prisma.user
+          .findMany({ where: { id: { in: [...notifyIds] }, pushNotificationsEnabled: true }, select: { id: true } })
+          .then((users) =>
+            users.forEach((u) =>
+              sendPushNotification(u.id, {
+                title: `${poster.name} commented`,
+                body: content.trim().slice(0, 100),
+                url: action.initiativeId ? `/initiatives/${action.initiativeId}` : '/command-center',
+                tag: `comment-${actionId}`,
+              }).catch((err) => console.error('[push] comment push failed:', err))
+            )
+          )
+          .catch(console.error);
+      }
+
       return res.status(201).json({ update });
     } catch {
       // ActionUpdate not in Prisma client yet — instruct to run prisma generate

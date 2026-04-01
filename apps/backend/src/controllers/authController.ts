@@ -44,10 +44,13 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Verify the Google ID token
+    // Verify the Google ID token — accept both client IDs (web + any additional)
+    const audiences = [process.env.GOOGLE_CLIENT_ID!];
+    if (process.env.GOOGLE_CLIENT_ID_2) audiences.push(process.env.GOOGLE_CLIENT_ID_2);
+
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: audiences,
     });
 
     const payload = ticket.getPayload();
@@ -116,6 +119,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
         role: user.role,
         emailVerified: user.emailVerified,
         avatar: user.avatar,
+        pushNotificationsEnabled: user.pushNotificationsEnabled,
       },
       token,
     });
@@ -135,7 +139,7 @@ export const getMe = async (
       where: { id: userId },
       select: {
         id: true, email: true, name: true, role: true, emailVerified: true,
-        avatar: true, timezone: true, createdAt: true,
+        avatar: true, timezone: true, createdAt: true, pushNotificationsEnabled: true,
       },
     });
 
