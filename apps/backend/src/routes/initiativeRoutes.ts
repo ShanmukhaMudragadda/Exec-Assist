@@ -21,6 +21,8 @@ import { listAllTags, createGlobalTag } from '../controllers/tagController';
 import {
   createAction,
   bulkCreateActions,
+  bulkUpdateActions,
+  bulkDeleteActions,
   updateAction,
   deleteAction,
   getCommandCenter,
@@ -71,6 +73,8 @@ router.post('/actions/generate', authMiddleware, generateStandaloneActions);    
 router.post('/initiatives/:initiativeId/actions', authMiddleware, createAction);
 router.post('/initiatives/:initiativeId/actions/bulk', authMiddleware, bulkCreateActions);
 router.post('/initiatives/:initiativeId/actions/generate', authMiddleware, generateActionsFromTranscript);
+router.patch('/actions/bulk', authMiddleware, bulkUpdateActions);
+router.delete('/actions/bulk', authMiddleware, bulkDeleteActions);
 router.get('/actions/:actionId', authMiddleware, getAction);
 router.patch('/actions/:actionId', authMiddleware, updateAction);
 router.delete('/actions/:actionId', authMiddleware, deleteAction);

@@ -223,31 +223,13 @@ export default function InitiativesPage() {
                             </div>
                             <div className="flex items-start gap-2 shrink-0">
                               {user?.id === init.creator.id && (
-                                confirmDeleteId === init.id ? (
-                                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      onClick={() => handleDeleteInitiative(init.id)}
-                                      disabled={deleting}
-                                      className="px-3 py-2 min-h-[36px] text-[12px] font-semibold bg-[#dc2626] text-white rounded-md hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
-                                    >
-                                      {deleting ? '...' : 'Delete'}
-                                    </button>
-                                    <button
-                                      onClick={() => setConfirmDeleteId(null)}
-                                      className="px-3 py-2 min-h-[36px] text-[12px] font-semibold bg-[#f3f4f6] text-[#6b7280] rounded-md hover:bg-[#e5e7eb] transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(init.id) }}
-                                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2]"
-                                    title="Delete initiative"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px]">delete</span>
-                                  </button>
-                                )
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(init.id) }}
+                                  className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2]"
+                                  title="Delete initiative"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                                </button>
                               )}
                               <div className="text-right">
                                 <span className="text-[18px] font-bold tabular-nums text-[#111827]">{init.progress || 0}%</span>
@@ -569,6 +551,42 @@ export default function InitiativesPage() {
           </div>
         </div>
       )}
+      {/* ── Delete Initiative Warning Modal ──────────────────────────────── */}
+      {confirmDeleteId && (() => {
+        const target = initiatives.find((i) => i.id === confirmDeleteId)
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] overflow-hidden">
+              <div className="px-6 pt-6 pb-4">
+                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#fef2f2] mx-auto mb-4">
+                  <span className="material-symbols-outlined text-[24px] text-[#dc2626]" style={{ fontVariationSettings: "'FILL' 1" }}>delete_forever</span>
+                </div>
+                <h2 className="text-[16px] font-bold text-[#111827] text-center">Delete Initiative?</h2>
+                <p className="text-[13px] text-[#6b7280] text-center mt-2 leading-relaxed">
+                  You're about to permanently delete{' '}
+                  <span className="font-semibold text-[#111827]">"{target?.title}"</span>.
+                  {' '}All actions and data within this initiative will be lost. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-2 px-6 pb-6">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="flex-1 h-10 text-[13px] font-semibold bg-[#f3f4f6] text-[#374151] rounded-xl hover:bg-[#e5e7eb] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteInitiative(confirmDeleteId)}
+                  disabled={deleting}
+                  className="flex-1 h-10 text-[13px] font-semibold bg-[#dc2626] text-white rounded-xl hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+                >
+                  {deleting ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </AppLayout>
   )
 }

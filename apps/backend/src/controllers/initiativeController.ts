@@ -210,10 +210,22 @@ export const listActions = async (req: AuthRequest, res: Response) => {
       filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
       null;
 
+    const STATUS_LABELS: Record<string, string> = {
+      'todo': 'to do', 'in-progress': 'in progress', 'in-review': 'in review', 'completed': 'done'
+    };
+    const matchingStatuses = search
+      ? Object.entries(STATUS_LABELS)
+          .filter(([key, label]) => key.includes(search.toLowerCase()) || label.includes(search.toLowerCase()))
+          .map(([key]) => key)
+      : [];
+
     const searchCondition = search ? {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
         { description: { contains: search, mode: 'insensitive' as const } },
+        { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
+        { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
+        ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
       ],
     } : null;
 

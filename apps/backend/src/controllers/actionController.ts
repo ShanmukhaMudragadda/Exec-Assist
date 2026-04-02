@@ -116,6 +116,20 @@ const bulkCreateItemSchema = z.object({
 });
 const bulkCreateSchema = z.array(bulkCreateItemSchema);
 
+const bulkUpdateSchema = z.object({
+  actionIds: z.array(z.string()).min(1),
+  update: z.object({
+    status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
+    priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    assigneeId: z.string().optional().nullable(),
+    dueDate: z.string().optional().nullable(),
+  }),
+});
+
+const bulkDeleteSchema = z.object({
+  actionIds: z.array(z.string()).min(1),
+});
+
 export const createAction = async (req: AuthRequest, res: Response) => {
   try {
     // initiativeId may come from route param (nested route) or body (standalone route)
@@ -258,6 +272,77 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
     }
 
     return res.status(201).json({ actions: created, count: created.length });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { actionIds, update } = bulkUpdateSchema.parse(req.body);
+
+    // Verify user has access to all requested actions
+    const actions = await prisma.action.findMany({
+      where: { id: { in: actionIds } },
+      select: { id: true, assigneeId: true, createdBy: true, initiativeId: true },
+    });
+
+    const userInitiatives = await prisma.initiative.findMany({
+      where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
+      select: { id: true },
+    });
+    const initiativeIds = new Set(userInitiatives.map((i) => i.id));
+
+    const accessibleIds = actions
+      .filter((a) => a.assigneeId === userId || a.createdBy === userId || (a.initiativeId && initiativeIds.has(a.initiativeId)))
+      .map((a) => a.id);
+
+    if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+    const updateData: Record<string, unknown> = {};
+    if (update.status !== undefined) updateData.status = update.status;
+    if (update.priority !== undefined) updateData.priority = update.priority;
+    if ('assigneeId' in update) updateData.assigneeId = update.assigneeId;
+    if ('dueDate' in update) updateData.dueDate = update.dueDate ? new Date(update.dueDate) : null;
+
+    await prisma.action.updateMany({ where: { id: { in: accessibleIds } }, data: updateData });
+
+    return res.json({ updated: accessibleIds.length });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { actionIds } = bulkDeleteSchema.parse(req.body);
+
+    const actions = await prisma.action.findMany({
+      where: { id: { in: actionIds } },
+      select: { id: true, assigneeId: true, createdBy: true, initiativeId: true },
+    });
+
+    const userInitiatives = await prisma.initiative.findMany({
+      where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
+      select: { id: true },
+    });
+    const initiativeIds = new Set(userInitiatives.map((i) => i.id));
+
+    const accessibleIds = actions
+      .filter((a) => a.assigneeId === userId || a.createdBy === userId || (a.initiativeId && initiativeIds.has(a.initiativeId)))
+      .map((a) => a.id);
+
+    if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+    await prisma.action.deleteMany({ where: { id: { in: accessibleIds } } });
+
+    return res.json({ deleted: accessibleIds.length });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
     console.error(err);
@@ -426,10 +511,22 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
       filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
       null;
 
+    const STATUS_LABELS: Record<string, string> = {
+      'todo': 'to do', 'in-progress': 'in progress', 'in-review': 'in review', 'completed': 'done'
+    };
+    const matchingStatuses = search
+      ? Object.entries(STATUS_LABELS)
+          .filter(([key, label]) => key.includes(search.toLowerCase()) || label.includes(search.toLowerCase()))
+          .map(([key]) => key)
+      : [];
+
     const searchCondition = search ? {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
         { description: { contains: search, mode: 'insensitive' as const } },
+        { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
+        { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
+        ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
       ],
     } : null;
 

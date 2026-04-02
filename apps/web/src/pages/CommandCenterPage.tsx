@@ -144,6 +144,14 @@ export default function CommandCenterPage() {
   const [actionsCursor, setActionsCursor] = useState<string | null>(null)
   const [hasMoreActions, setHasMoreActions] = useState(false)
 
+  // Bulk selection state
+  const [selectedActionIds, setSelectedActionIds] = useState<Set<string>>(new Set())
+  const [bulkUpdating, setBulkUpdating] = useState(false)
+  const [showBulkStatusMenu, setShowBulkStatusMenu] = useState(false)
+  const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [showBulkAssigneeMenu, setShowBulkAssigneeMenu] = useState(false)
+
   // Initiative edit state
   const [showEditInitiative, setShowEditInitiative] = useState(false)
   const [editInitForm, setEditInitForm] = useState({ title: '', description: '', status: 'active', priority: 'medium', dueDate: '' })
@@ -227,6 +235,7 @@ export default function CommandCenterPage() {
     queryKey: ['command-center', actionFilter, debouncedSearch],
     queryFn: () => actionsApi.getCommandCenter(undefined, actionFilter, debouncedSearch).then((r) => r.data),
     enabled: !initiativeId,
+    placeholderData: (prev: any) => prev,
   } as any)
 
   const { data: workspaceTagsData } = useQuery({
@@ -259,11 +268,7 @@ export default function CommandCenterPage() {
     setExtraActions([])
   }, [(ccData as any)?.meta?.nextCursor, initiativeId])
 
-  // Debounce search query (300ms) for CC server-side search
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300)
-    return () => clearTimeout(t)
-  }, [searchQuery])
+  // debouncedSearch is only updated on Enter or suggestion select (not on every keystroke)
 
   // Reset CC pagination when filter or search changes
   useEffect(() => {
@@ -314,11 +319,11 @@ export default function CommandCenterPage() {
     const assigneeNames = new Map<string, string>()
     baseActions.forEach((a) => { if (a.assignee && a.assignee.name.toLowerCase().includes(q)) assigneeNames.set(a.assignee.id, a.assignee.name) })
     assigneeNames.forEach((name) => { if (!seen.has('as:' + name)) { seen.add('as:' + name); suggestions.push({ type: 'assignee', label: name, sublabel: 'Assignee', value: name }) } })
-    const STATUS_DISPLAY: Record<string, string> = { 'todo': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', 'completed': 'Completed' }
+    const STATUS_DISPLAY: Record<string, string> = { 'todo': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', 'completed': 'Done' }
     Object.entries(STATUS_DISPLAY).forEach(([key, label]) => {
       if (label.toLowerCase().includes(q) || key.includes(q)) {
         const count = baseActions.filter((a) => a.status === key).length
-        if (!seen.has('st:' + key)) { seen.add('st:' + key); suggestions.push({ type: 'status', label, sublabel: `${count} action${count !== 1 ? 's' : ''}`, value: label }) }
+        if (!seen.has('st:' + key)) { seen.add('st:' + key); suggestions.push({ type: 'status', label, sublabel: `${count} action${count !== 1 ? 's' : ''}`, value: key }) }
       }
     })
     const PRIORITY_DISPLAY: Record<string, string> = { 'urgent': 'Urgent', 'high': 'High', 'medium': 'Medium', 'low': 'Low' }
@@ -331,7 +336,7 @@ export default function CommandCenterPage() {
     if (initiativeId) {
       allTags.filter((t) => t.name.toLowerCase().includes(q)).forEach((tag) => {
         const count = baseActions.filter((a) => a.tags?.some((at) => at.tag.id === tag.id)).length
-        if (!seen.has('tg:' + tag.id)) { seen.add('tg:' + tag.id); suggestions.push({ type: 'tag', label: `#${tag.name}`, sublabel: `${count} action${count !== 1 ? 's' : ''}`, value: tag.name }) }
+        if (!seen.has('tg:' + tag.id)) { seen.add('tg:' + tag.id); suggestions.push({ type: 'tag', label: `#${tag.name}`, sublabel: `${count} action${count !== 1 ? 's' : ''}`, value: tag.id }) }
       })
     }
     return suggestions.length ? suggestions : null
@@ -347,8 +352,8 @@ export default function CommandCenterPage() {
       default: base = baseActions
     }
     if (tagFilter) base = base.filter((a) => a.tags?.some((at) => at.tag.id === tagFilter))
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase()
       base = base.filter((a) =>
         a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) ||
         a.assignee?.name.toLowerCase().includes(q) || a.tags?.some((at) => at.tag.name.toLowerCase().includes(q))
@@ -480,6 +485,49 @@ export default function CommandCenterPage() {
     } catch {}
   }
 
+  const toggleSelectAction = (id: string) => {
+    setSelectedActionIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const selectAllVisible = () => {
+    const visibleIds = (initiativeId ? filteredInitiativeActions : filteredCCActions).map((a: Action) => a.id)
+    setSelectedActionIds(new Set(visibleIds))
+  }
+
+  const clearSelection = () => {
+    setSelectedActionIds(new Set())
+    setShowBulkStatusMenu(false)
+    setShowBulkPriorityMenu(false)
+    setShowBulkAssigneeMenu(false)
+    setConfirmBulkDelete(false)
+  }
+
+  const handleBulkUpdate = async (update: { status?: string; priority?: string }) => {
+    if (selectedActionIds.size === 0) return
+    setBulkUpdating(true)
+    try {
+      await actionsApi.bulkUpdate([...selectedActionIds], update)
+      if (initiativeId) queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      clearSelection()
+    } catch {} finally { setBulkUpdating(false) }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedActionIds.size === 0) return
+    setBulkUpdating(true)
+    try {
+      await actionsApi.bulkDelete([...selectedActionIds])
+      if (initiativeId) queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      clearSelection()
+    } catch {} finally { setBulkUpdating(false) }
+  }
+
   const handleGenerateActions = async () => {
     if (!transcript.trim()) return
     setGenerating(true)
@@ -566,12 +614,15 @@ export default function CommandCenterPage() {
           className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#e5e7eb] rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/10 focus:border-[#4648d4] transition-all placeholder:text-[#c4c4c4]"
           placeholder={initiativeId ? 'Search by name, assignee, status, tag…' : 'Search actions, initiatives…'}
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value) setDebouncedSearch('') }}
           onFocus={() => setSearchFocused(true)}
-          onKeyDown={(e) => { if (e.key === 'Escape') { setSearchFocused(false); setSearchQuery('') } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setSearchFocused(false); setSearchQuery(''); setDebouncedSearch('') }
+            if (e.key === 'Enter') { setDebouncedSearch(searchQuery); setSearchFocused(false) }
+          }}
         />
         {searchQuery && (
-          <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#374151]">
+          <button onClick={() => { setSearchQuery(''); setDebouncedSearch('') }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#374151]">
             <span className="material-symbols-outlined text-[15px]">close</span>
           </button>
         )}
@@ -582,7 +633,20 @@ export default function CommandCenterPage() {
                 const iconMap: Record<string, string> = { action: 'task_alt', assignee: 'person', status: 'pending', priority: 'flag', tag: 'sell' }
                 const colorMap: Record<string, string> = { action: '#4648d4', assignee: '#2563eb', status: '#7c3aed', priority: '#0891b2', tag: '#0f766e' }
                 return (
-                  <button key={i} onMouseDown={(e) => { e.preventDefault(); setSearchQuery(s.value); setSearchFocused(false) }}
+                  <button key={i} onMouseDown={(e) => {
+                    e.preventDefault()
+                    if (s.type === 'status') {
+                      const filterMap: Record<string, ActionFilter> = { 'completed': 'completed', 'todo': 'open', 'in-progress': 'open', 'in-review': 'open' }
+                      setActionFilter(filterMap[s.value] ?? 'all')
+                      setSearchQuery(''); setDebouncedSearch('')
+                    } else if (s.type === 'tag') {
+                      setTagFilter(s.value)
+                      setSearchQuery(''); setDebouncedSearch('')
+                    } else {
+                      setSearchQuery(s.value); setDebouncedSearch(s.value)
+                    }
+                    setSearchFocused(false)
+                  }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-[#f5f3ff] transition-colors text-left"
                   >
                     <span className="material-symbols-outlined text-[15px] shrink-0" style={{ color: colorMap[s.type], fontVariationSettings: "'FILL' 1" }}>{iconMap[s.type]}</span>
@@ -632,11 +696,26 @@ export default function CommandCenterPage() {
     const isOD = action.dueDate && isBefore(new Date(action.dueDate), now) && action.status !== 'completed'
     const isDueSoon = action.dueDate && !isOD && differenceInDays(new Date(action.dueDate), now) <= 3 && action.status !== 'completed'
     const actionTags = action.tags?.map((at) => at.tag) || []
+    const isSelected = selectedActionIds.has(action.id)
     return (
       <div
-        className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100', action.status === 'completed' && 'opacity-50')}
+        className={cn('group relative flex items-start gap-0 transition-colors duration-100',
+          isSelected ? 'bg-[#f5f3ff]' : 'hover:bg-[#fafafa]',
+          action.status === 'completed' && 'opacity-60'
+        )}
       >
-        <div className="w-[3px] shrink-0 self-stretch" style={{ backgroundColor: isOD ? '#dc2626' : isDueSoon ? '#2563eb' : STATUS_BORDER[action.status] || '#e5e7eb' }} />
+        {/* Checkbox */}
+        <div className="flex items-center justify-center w-7 shrink-0 self-stretch pl-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSelectAction(action.id) }}
+            className={cn('rounded flex items-center justify-center border transition-all shrink-0',
+              isSelected ? 'bg-[#4648d4] border-[#4648d4]' : 'bg-white border-[#d1d5db] group-hover:border-[#4648d4]'
+            )}
+            style={{ width: 14, height: 14 }}
+          >
+            {isSelected && <span className="material-symbols-outlined text-white" style={{ fontSize: 11, fontVariationSettings: "'FILL' 1, 'wght' 700" }}>check</span>}
+          </button>
+        </div>
         <div className="flex-1 flex items-start gap-3 px-4 py-2.5 min-w-0">
           <div className={cn('w-1.5 h-1.5 rounded-full mt-[5px] shrink-0', PRIORITY_DOT[action.priority] || 'bg-[#e5e7eb]')} />
           <div className="flex-1 min-w-0">
@@ -688,29 +767,19 @@ export default function CommandCenterPage() {
               <div className="flex items-center gap-2 shrink-0">
                 {action.status !== 'completed' && (
                   <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
-                    className="text-[12px] font-semibold text-[#4648d4] opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
-                  >✓ Done</button>
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    Done
+                  </button>
                 )}
                 <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
-                  className="text-[#d1d5db] hover:text-[#4648d4] opacity-0 group-hover:opacity-100 transition-all"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
                   title="Quick edit"
                 >
-                  <span className="material-symbols-outlined text-[15px]">edit</span>
+                  <span className="material-symbols-outlined text-[13px]">edit</span>
+                  Edit
                 </button>
-                {(initiativeId ? isOwnerOrAdmin : true) && (
-                  confirmDeleteActionId === action.id ? (
-                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleDeleteAction(action.id)} className="px-2 py-0.5 text-[11px] font-semibold bg-[#dc2626] text-white rounded-md hover:bg-[#b91c1c] transition-colors">Delete</button>
-                      <button onClick={() => setConfirmDeleteActionId(null)} className="px-2 py-0.5 text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] rounded-md hover:bg-[#e5e7eb] transition-colors">Cancel</button>
-                    </div>
-                  ) : (
-                    <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteActionId(action.id) }}
-                      className="text-[#d1d5db] hover:text-[#dc2626] opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">delete</span>
-                    </button>
-                  )
-                )}
               </div>
             </div>
           </div>
@@ -1712,6 +1781,137 @@ export default function CommandCenterPage() {
           </div>
         </div>
       )}
+      {/* ── Bulk Action Toolbar (Gmail-style top bar) ────────────────────────── */}
+      <div
+        className={cn('fixed left-0 right-0 md:left-[216px] z-[70]', selectedActionIds.size === 0 && 'pointer-events-none')}
+        style={{
+          top: 'var(--content-pt)',
+          transform: selectedActionIds.size > 0 ? 'translateY(0)' : 'translateY(calc(-100% - var(--content-pt)))',
+          transition: 'transform 0.25s ease-out',
+        }}
+      >
+        <div className="bg-white border-b border-[#e5e7eb] shadow-md px-4 py-2 flex items-center gap-2 flex-wrap">
+          {/* Count + select all */}
+          <span className="material-symbols-outlined text-[#4648d4] text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_box</span>
+          <span className="text-[13px] font-semibold text-[#111827]">{selectedActionIds.size} selected</span>
+          <button onClick={selectAllVisible} className="text-[11px] text-[#4648d4] hover:text-[#3730a3] transition-colors underline underline-offset-2 mr-2">
+            Select all
+          </button>
+
+          {/* Status quick actions */}
+          <button onClick={() => handleBulkUpdate({ status: 'completed' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Mark Done
+          </button>
+          <button onClick={() => handleBulkUpdate({ status: 'in-progress' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#ede9fe] text-[#4648d4] border border-[#c4b5fd] hover:bg-[#ddd6fe] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+            In Progress
+          </button>
+          <button onClick={() => handleBulkUpdate({ status: 'todo' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]">radio_button_unchecked</span>
+            To Do
+          </button>
+
+          {/* Priority */}
+          <div className="relative">
+            <button onClick={() => { setShowBulkPriorityMenu((v) => !v); setShowBulkAssigneeMenu(false) }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[12px]">flag</span>
+              Priority
+              <span className="material-symbols-outlined text-[11px]">expand_more</span>
+            </button>
+            {showBulkPriorityMenu && (
+              <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-36 z-10">
+                {(['urgent', 'high', 'medium', 'low'] as const).map((p) => (
+                  <button key={p} onClick={() => { handleBulkUpdate({ priority: p }); setShowBulkPriorityMenu(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                  >
+                    <span className={cn('w-2 h-2 rounded-full', { urgent: 'bg-[#dc2626]', high: 'bg-[#f97316]', medium: 'bg-[#eab308]', low: 'bg-[#6b7280]' }[p])} />
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Assignee */}
+          <div className="relative">
+            {(() => {
+              const bulkAssignees = initiativeId && initiative
+                ? [{ id: initiative.creator.id, name: initiative.creator.name, avatar: initiative.creator.avatar || null }, ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null }))]
+                : user ? [{ id: user.id, name: user.name, avatar: user.avatar || null }] : []
+              return (
+                <>
+                  <button onClick={() => { setShowBulkAssigneeMenu((v) => !v); setShowBulkPriorityMenu(false) }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">person</span>
+                    Assignee
+                    <span className="material-symbols-outlined text-[11px]">expand_more</span>
+                  </button>
+                  {showBulkAssigneeMenu && (
+                    <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-44 z-10">
+                      <button onClick={() => { handleBulkUpdate({ assigneeId: null }); setShowBulkAssigneeMenu(false) }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[#9ca3af] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">person_off</span>
+                        Unassign
+                      </button>
+                      {bulkAssignees.map((a) => (
+                        <button key={a.id} onClick={() => { handleBulkUpdate({ assigneeId: a.id }); setShowBulkAssigneeMenu(false) }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                        >
+                          {a.avatar
+                            ? <img src={a.avatar} className="w-5 h-5 rounded-full object-cover" />
+                            : <div className="w-5 h-5 rounded-full bg-[#ede9fe] text-[#4648d4] text-[9px] font-bold flex items-center justify-center">{a.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}</div>
+                          }
+                          {a.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Delete */}
+          {confirmBulkDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#dc2626] font-medium">Delete {selectedActionIds.size} actions?</span>
+              <button onClick={handleBulkDelete} disabled={bulkUpdating}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#dc2626] text-white hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+              >{bulkUpdating ? '...' : 'Confirm'}</button>
+              <button onClick={() => setConfirmBulkDelete(false)}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+              >Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmBulkDelete(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#fef2f2] text-[#dc2626] border border-[#fecaca] hover:bg-[#fee2e2] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[12px]">delete</span>
+              Delete
+            </button>
+          )}
+
+          {/* Clear */}
+          <button onClick={clearSelection}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-[#f3f4f6] text-[#9ca3af] border border-[#e5e7eb] hover:bg-[#e5e7eb] hover:text-[#374151] transition-colors shrink-0 ml-1"
+          >
+            <span className="material-symbols-outlined text-[14px]">close</span>
+          </button>
+        </div>
+      </div>
     </AppLayout>
   )
 }

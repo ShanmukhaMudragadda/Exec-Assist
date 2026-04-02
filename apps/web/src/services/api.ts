@@ -110,6 +110,10 @@ export const actionsApi = {
     initiativeId: string | null;
   }>) => api.patch(`/actions/${actionId}`, data),
   delete: (actionId: string) => api.delete(`/actions/${actionId}`),
+  bulkUpdate: (actionIds: string[], update: { status?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null }) =>
+    api.patch('/actions/bulk', { actionIds, update }),
+  bulkDelete: (actionIds: string[]) =>
+    api.delete('/actions/bulk', { data: { actionIds } }),
   getCommandCenter: (cursor?: string, filter?: string, search?: string) =>
     api.get('/command-center', { params: { ...(cursor ? { cursor } : {}), ...(filter && filter !== 'all' ? { filter } : {}), ...(search ? { search } : {}) } }),
   listForInitiative: (initiativeId: string, cursor: string, filter?: string, search?: string) =>

@@ -150,6 +150,11 @@ export default function InitiativeDetailPage() {
   const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeId: '', tagIds: [] as string[] })
   const [saving, setSaving] = useState(false)
   const [confirmDeleteActionId, setConfirmDeleteActionId] = useState<string | null>(null)
+  const [selectedActionIds, setSelectedActionIds] = useState<Set<string>>(new Set())
+  const [bulkUpdating, setBulkUpdating] = useState(false)
+  const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [showBulkAssigneeMenu, setShowBulkAssigneeMenu] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [generating, setGenerating] = useState(false)
   const [generatedActions, setGeneratedActions] = useState<any[]>([])
@@ -357,6 +362,33 @@ export default function InitiativeDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setConfirmDeleteActionId(null)
     } catch {}
+  }
+
+  const toggleSelectAction = (id: string) => {
+    setSelectedActionIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+  const clearSelection = () => { setSelectedActionIds(new Set()); setShowBulkPriorityMenu(false); setConfirmBulkDelete(false) }
+
+  const handleBulkUpdate = async (update: { status?: string; priority?: string }) => {
+    if (selectedActionIds.size === 0) return
+    setBulkUpdating(true)
+    try {
+      await actionsApi.bulkUpdate([...selectedActionIds], update)
+      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      clearSelection()
+    } catch {} finally { setBulkUpdating(false) }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedActionIds.size === 0) return
+    setBulkUpdating(true)
+    try {
+      await actionsApi.bulkDelete([...selectedActionIds])
+      queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+      queryClient.invalidateQueries({ queryKey: ['command-center'] })
+      clearSelection()
+    } catch {} finally { setBulkUpdating(false) }
   }
 
   const handleLoadMore = async () => {
@@ -639,17 +671,27 @@ export default function InitiativeDetailPage() {
                   const dotColor = PRIORITY_DOT[action.priority]?.replace('bg-', '').replace('[', '').replace(']', '') || '#e5e7eb'
                   const actionTags = action.tags?.map((at) => at.tag) || []
 
+                  const isSelected = selectedActionIds.has(action.id)
                   return (
                     <div
                       key={action.id}
-                      onClick={() => navigate(`/initiatives/${initiativeId}/actions/${action.id}`)}
-                      className={cn('group relative flex items-start gap-0 hover:bg-[#fafafa] transition-colors duration-100 cursor-pointer', action.status === 'completed' && 'opacity-50')}
+                      className={cn('group relative flex items-start gap-0 transition-colors duration-100',
+                        isSelected ? 'bg-[#f5f3ff]' : 'hover:bg-[#fafafa]',
+                        action.status === 'completed' && 'opacity-60'
+                      )}
                     >
-                      {/* Status bar */}
-                      <div
-                        className="w-[3px] shrink-0 self-stretch"
-                        style={{ backgroundColor: isOD ? '#dc2626' : isDueSoon ? '#2563eb' : action.status === 'in-progress' ? '#4648d4' : '#e5e7eb' }}
-                      />
+                      {/* Checkbox */}
+                      <div className="flex items-center justify-center w-7 shrink-0 self-stretch pl-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleSelectAction(action.id) }}
+                          className={cn('rounded flex items-center justify-center border transition-all shrink-0',
+                            isSelected ? 'bg-[#4648d4] border-[#4648d4]' : 'bg-white border-[#d1d5db] group-hover:border-[#4648d4]'
+                          )}
+                          style={{ width: 14, height: 14 }}
+                        >
+                          {isSelected && <span className="material-symbols-outlined text-white" style={{ fontSize: 11, fontVariationSettings: "'FILL' 1, 'wght' 700" }}>check</span>}
+                        </button>
+                      </div>
                       <div className="flex-1 flex items-start gap-3 px-4 py-2.5 min-w-0">
                         <div
                           className={cn('w-1.5 h-1.5 rounded-full mt-[5px] shrink-0', PRIORITY_DOT[action.priority] || 'bg-[#e5e7eb]')}
@@ -657,9 +699,11 @@ export default function InitiativeDetailPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2 mb-0.5">
                             <h4
+                              onClick={() => selectedActionIds.size === 0 && navigate(`/initiatives/${initiativeId}/actions/${action.id}`)}
                               className={cn(
                                 'text-[14px] font-medium text-[#111827] truncate transition-colors',
-                                action.status === 'completed' && 'line-through text-[#9ca3af]'
+                                action.status === 'completed' && 'line-through text-[#9ca3af]',
+                                selectedActionIds.size === 0 && 'cursor-pointer hover:text-[#4648d4]'
                               )}
                             >
                               {action.title}
@@ -712,38 +756,12 @@ export default function InitiativeDetailPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {action.status !== 'completed' && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
-                                  className="text-[12px] font-semibold text-[#4648d4] opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
+                                <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
                                 >
-                                  ✓ Done
+                                  <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                                  Done
                                 </button>
-                              )}
-                              {isOwnerOrAdmin && (
-                                confirmDeleteActionId === action.id ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteAction(action.id) }}
-                                      className="px-2 py-0.5 text-[11px] font-semibold bg-[#dc2626] text-white rounded-md hover:bg-[#b91c1c] transition-colors"
-                                    >
-                                      Delete
-                                    </button>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteActionId(null) }}
-                                      className="px-2 py-0.5 text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] rounded-md hover:bg-[#e5e7eb] transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteActionId(action.id) }}
-                                    className="text-[#d1d5db] hover:text-[#dc2626] opacity-0 group-hover:opacity-100 transition-all"
-                                    title="Delete action"
-                                  >
-                                    <span className="material-symbols-outlined text-[15px]">delete</span>
-                                  </button>
-                                )
                               )}
                             </div>
                           </div>
@@ -1476,6 +1494,126 @@ export default function InitiativeDetailPage() {
           </div>
         </div>
       )}
+      {/* ── Bulk Action Toolbar (Gmail-style top bar) ────────────────────────── */}
+      <div
+        className={cn('fixed left-0 right-0 md:left-[216px] z-[70]', selectedActionIds.size === 0 && 'pointer-events-none')}
+        style={{
+          top: 'var(--content-pt)',
+          transform: selectedActionIds.size > 0 ? 'translateY(0)' : 'translateY(calc(-100% - var(--content-pt)))',
+          transition: 'transform 0.25s ease-out',
+        }}
+      >
+        <div className="bg-white border-b border-[#e5e7eb] shadow-md px-4 py-2 flex items-center gap-2 flex-wrap">
+          <span className="material-symbols-outlined text-[#4648d4] text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_box</span>
+          <span className="text-[13px] font-semibold text-[#111827]">{selectedActionIds.size} selected</span>
+          <button onClick={() => setSelectedActionIds(new Set(filteredActions.map((a: any) => a.id)))}
+            className="text-[11px] text-[#4648d4] hover:text-[#3730a3] transition-colors underline underline-offset-2 mr-2"
+          >Select all</button>
+          <button onClick={() => handleBulkUpdate({ status: 'completed' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Mark Done
+          </button>
+          <button onClick={() => handleBulkUpdate({ status: 'in-progress' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#ede9fe] text-[#4648d4] border border-[#c4b5fd] hover:bg-[#ddd6fe] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+            In Progress
+          </button>
+          <button onClick={() => handleBulkUpdate({ status: 'todo' })} disabled={bulkUpdating}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[12px]">radio_button_unchecked</span>
+            To Do
+          </button>
+          <div className="relative">
+            <button onClick={() => { setShowBulkPriorityMenu((v) => !v); setShowBulkAssigneeMenu(false) }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[12px]">flag</span>
+              Priority
+              <span className="material-symbols-outlined text-[11px]">expand_more</span>
+            </button>
+            {showBulkPriorityMenu && (
+              <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-36 z-10">
+                {(['urgent', 'high', 'medium', 'low'] as const).map((p) => (
+                  <button key={p} onClick={() => { handleBulkUpdate({ priority: p }); setShowBulkPriorityMenu(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                  >
+                    <span className={cn('w-2 h-2 rounded-full', { urgent: 'bg-[#dc2626]', high: 'bg-[#f97316]', medium: 'bg-[#eab308]', low: 'bg-[#6b7280]' }[p])} />
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            {(() => {
+              const bulkAssignees = [
+                { id: initiative.creator.id, name: initiative.creator.name, avatar: (initiative.creator as any).avatar || null },
+                ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null }))
+              ]
+              return (
+                <>
+                  <button onClick={() => { setShowBulkAssigneeMenu((v) => !v); setShowBulkPriorityMenu(false) }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">person</span>
+                    Assignee
+                    <span className="material-symbols-outlined text-[11px]">expand_more</span>
+                  </button>
+                  {showBulkAssigneeMenu && (
+                    <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-44 z-10">
+                      <button onClick={() => { handleBulkUpdate({ assigneeId: null }); setShowBulkAssigneeMenu(false) }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[#9ca3af] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">person_off</span>
+                        Unassign
+                      </button>
+                      {bulkAssignees.map((a) => (
+                        <button key={a.id} onClick={() => { handleBulkUpdate({ assigneeId: a.id }); setShowBulkAssigneeMenu(false) }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                        >
+                          {a.avatar
+                            ? <img src={a.avatar} className="w-5 h-5 rounded-full object-cover" />
+                            : <div className="w-5 h-5 rounded-full bg-[#ede9fe] text-[#4648d4] text-[9px] font-bold flex items-center justify-center">{a.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}</div>
+                          }
+                          {a.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+          <div className="flex-1" />
+          {confirmBulkDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#dc2626] font-medium">Delete {selectedActionIds.size} actions?</span>
+              <button onClick={handleBulkDelete} disabled={bulkUpdating}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#dc2626] text-white hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+              >{bulkUpdating ? '...' : 'Confirm'}</button>
+              <button onClick={() => setConfirmBulkDelete(false)}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+              >Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmBulkDelete(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#fef2f2] text-[#dc2626] border border-[#fecaca] hover:bg-[#fee2e2] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[12px]">delete</span>
+              Delete
+            </button>
+          )}
+          <button onClick={clearSelection}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-[#f3f4f6] text-[#9ca3af] border border-[#e5e7eb] hover:bg-[#e5e7eb] hover:text-[#374151] transition-colors shrink-0 ml-1"
+          >
+            <span className="material-symbols-outlined text-[14px]">close</span>
+          </button>
+        </div>
+      </div>
     </AppLayout>
   )
 }

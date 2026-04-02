@@ -25,6 +25,7 @@ COPY prisma ./prisma/
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist/
+COPY scripts ./scripts/
 
 RUN mkdir -p /app/uploads
 
