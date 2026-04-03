@@ -263,6 +263,11 @@ export default function ActionDetailPage() {
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: statusCfg.dotColor }} />
+                  {action.actionNumber != null && (
+                    <span className="text-[12px] font-mono font-semibold text-[#9ca3af] bg-[#f3f4f6] px-2 py-0.5 rounded">
+                      A-{String(action.actionNumber).padStart(5, '0')}
+                    </span>
+                  )}
                   {isOverdue && <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef2f2] text-[#dc2626]">Overdue</span>}
                   {!canEdit && <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#f3f4f6] text-[#9ca3af] flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">lock</span>View only</span>}
                   {saving && <span className="text-[11px] text-[#9ca3af]">Saving...</span>}

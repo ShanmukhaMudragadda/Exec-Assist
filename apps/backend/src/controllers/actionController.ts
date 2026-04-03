@@ -584,6 +584,10 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
           .map(([key]) => key)
       : [];
 
+    // Parse action number from search (supports "A-00001", "A-1", "00001", "1")
+    const actionNumberMatch = search ? parseInt(search.replace(/^A-0*/i, '').replace(/^0+/, '') || '0', 10) : NaN;
+    const matchingActionNumber = !isNaN(actionNumberMatch) && actionNumberMatch > 0 ? actionNumberMatch : null;
+
     const searchCondition = search ? {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
@@ -591,6 +595,7 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
         { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
         { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
         ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
+        ...(matchingActionNumber ? [{ actionNumber: matchingActionNumber }] : []),
       ],
     } : null;
 

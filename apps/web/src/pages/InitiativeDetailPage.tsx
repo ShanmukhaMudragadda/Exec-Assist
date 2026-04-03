@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 interface Tag { id: string; name: string; color: string }
 interface ActionTag { tag: Tag }
 interface Action {
-  id: string; title: string; description?: string | null; status: string; priority: string
+  id: string; actionNumber?: number | null; title: string; description?: string | null; status: string; priority: string
   dueDate?: string | null
   assignee?: { id: string; name: string; avatar?: string | null } | null
   creator: { id: string; name: string; avatar?: string | null }
@@ -249,6 +249,24 @@ export default function InitiativeDetailPage() {
     const seen = new Set<string>()
     const suggestions: Suggestion[] = []
 
+    // Action number search: if query looks like a number or "A-NNN", match from loaded actions
+    const numQ = parseInt(q.replace(/^a-0*/i, '').replace(/^0+/, '') || '0', 10)
+    const isNumberQuery = /^(a-?\d+|\d+)$/i.test(q.trim())
+    if (isNumberQuery && !isNaN(numQ) && numQ > 0) {
+      const matched = allActions.filter((a) => (a as any).actionNumber === numQ).slice(0, 3)
+      if (matched.length > 0) {
+        matched.forEach((a) => {
+          const numLabel = `A-${String((a as any).actionNumber).padStart(5, '0')}`
+          if (!seen.has('a:' + a.id)) { seen.add('a:' + a.id); suggestions.push({ type: 'action', label: numLabel, sublabel: a.title, value: numLabel }) }
+        })
+      } else {
+        // Action not in current list — still propose the formatted number as a search term
+        const numLabel = `A-${String(numQ).padStart(5, '0')}`
+        seen.add('num:' + numQ)
+        suggestions.push({ type: 'action', label: numLabel, sublabel: 'Search by action number', value: numLabel })
+      }
+    }
+
     // Matching action titles
     allActions.filter((a) => a.title.toLowerCase().includes(q)).slice(0, 4).forEach((a) => {
       if (!seen.has('a:' + a.id)) { seen.add('a:' + a.id); suggestions.push({ type: 'action', label: a.title, sublabel: a.assignee?.name, value: a.title }) }
@@ -315,6 +333,8 @@ export default function InitiativeDetailPage() {
         const priorityMatch = Object.entries(PRIORITY_ALIASES).find(([k]) => k === a.priority)?.[1].some((alias) => alias.includes(q) || q.includes(alias))
         if (priorityMatch) return true
         if (a.tags?.some((at) => at.tag.name.toLowerCase().includes(q))) return true
+        const numSearch = parseInt(q.replace(/^a-0*/i, '').replace(/^0+/, '') || '0', 10)
+        if (!isNaN(numSearch) && numSearch > 0 && (a as any).actionNumber === numSearch) return true
         return false
       })
     }
@@ -708,11 +728,16 @@ export default function InitiativeDetailPage() {
                             <h4
                               onClick={() => selectedActionIds.size === 0 && navigate(`/initiatives/${initiativeId}/actions/${action.id}`)}
                               className={cn(
-                                'text-[14px] font-medium text-[#111827] truncate transition-colors',
+                                'text-[14px] font-medium text-[#111827] truncate transition-colors flex items-center gap-1.5',
                                 action.status === 'completed' && 'line-through text-[#9ca3af]',
                                 selectedActionIds.size === 0 && 'cursor-pointer hover:text-[#4648d4]'
                               )}
                             >
+                              {action.actionNumber != null && (
+                                <span className="text-[11px] font-mono font-semibold text-[#9ca3af] shrink-0">
+                                  A-{String(action.actionNumber).padStart(5, '0')}
+                                </span>
+                              )}
                               {action.title}
                             </h4>
                             <div className="flex items-center gap-2 shrink-0">

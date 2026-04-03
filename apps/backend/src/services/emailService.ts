@@ -18,9 +18,15 @@ interface EmailOptions {
 
 export const sendEmail = async (options: EmailOptions): Promise<void> => {
   try {
+    const domain = (process.env.EMAIL_FROM || 'noreply@executive-tool.com').replace(/^.*@/, '');
+    const uniqueMessageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${domain}>`;
     await transporter.sendMail({
       from: process.env.EMAIL_FROM || 'noreply@executive-tool.com',
       ...options,
+      messageId: uniqueMessageId,
+      headers: {
+        'X-Entity-Ref-ID': uniqueMessageId, // prevents Gmail smart grouping
+      },
     });
   } catch (error) {
     console.error('Error sending email:', error);

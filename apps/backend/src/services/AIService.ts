@@ -305,6 +305,7 @@ Rules:
 }
 
 export interface DigestAction {
+  actionNumber?: number | null;
   title: string;
   status: string;
   priority: string;

@@ -196,6 +196,7 @@ export const sendInitiativeDailyDigest = async (initiativeId: string): Promise<v
       const updatedAt = new Date((a as any).updatedAt || now);
       const daysSinceUpdate = Math.floor((now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24));
       return {
+        actionNumber: (a as any).actionNumber ?? null,
         title: a.title,
         status: a.status,
         priority: a.priority,
@@ -222,6 +223,7 @@ export const sendInitiativeDailyDigest = async (initiativeId: string): Promise<v
       <tr>
         <td style="padding:8px 12px; border-bottom:1px solid #f3f4f6;">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${PRIORITY_COLOR[a.priority] || '#6b7280'};margin-right:8px;vertical-align:middle;"></span>
+          ${a.actionNumber != null ? `<span style="font-size:10px;font-family:monospace;font-weight:600;color:#9ca3af;background:#f3f4f6;padding:1px 5px;border-radius:4px;margin-right:6px;">A-${String(a.actionNumber).padStart(5, '0')}</span>` : ''}
           <span style="font-size:13px;color:#111827;">${a.title}</span>
           ${a.isOverdue ? '<span style="margin-left:6px;font-size:10px;font-weight:700;color:#fff;background:#dc2626;padding:1px 6px;border-radius:10px;">OVERDUE</span>' : ''}
           ${a.daysSinceUpdate >= 3 && a.status !== 'completed' ? `<span style="margin-left:6px;font-size:10px;font-weight:700;color:#fff;background:#f97316;padding:1px 6px;border-radius:10px;">STALE ${a.daysSinceUpdate}d</span>` : ''}

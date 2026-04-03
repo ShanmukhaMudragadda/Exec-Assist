@@ -129,6 +129,7 @@ model Tag {
 
 model Action {
   id           String    @id @default(cuid())
+  actionNumber Int       @unique @default(autoincrement())
   initiativeId String?
   createdBy    String
   assigneeId   String?

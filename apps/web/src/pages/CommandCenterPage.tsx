@@ -13,7 +13,7 @@ import { toast } from '@/hooks/use-toast'
 interface Tag { id: string; name: string; color: string }
 interface ActionTag { tag: Tag }
 interface Action {
-  id: string; title: string; description?: string | null; status: string; priority: string
+  id: string; actionNumber?: number | null; title: string; description?: string | null; status: string; priority: string
   dueDate?: string | null
   assignee?: { id: string; name: string; avatar?: string | null } | null
   creator: { id: string; name: string; avatar?: string | null }
@@ -320,6 +320,15 @@ export default function CommandCenterPage() {
     type Suggestion = { type: 'action' | 'assignee' | 'status' | 'priority' | 'tag'; label: string; sublabel?: string; value: string }
     const seen = new Set<string>()
     const suggestions: Suggestion[] = []
+    // Action number search: if query looks like a number or "A-NNN", propose A-XXXXX directly
+    // (don't rely on baseActions being paginated — just format and let backend resolve)
+    const numQ = parseInt(q.replace(/^a-0*/i, '').replace(/^0+/, '') || '0', 10)
+    const isNumberQuery = /^(a-?\d+|\d+)$/i.test(q.trim())
+    if (isNumberQuery && !isNaN(numQ) && numQ > 0) {
+      const numLabel = `A-${String(numQ).padStart(5, '0')}`
+      seen.add('num:' + numQ)
+      suggestions.push({ type: 'action', label: numLabel, sublabel: 'Search by action number', value: numLabel })
+    }
     baseActions.filter((a) => a.title.toLowerCase().includes(q)).slice(0, 4).forEach((a) => {
       if (!seen.has('a:' + a.id)) { seen.add('a:' + a.id); suggestions.push({ type: 'action', label: a.title, sublabel: a.assignee?.name, value: a.title }) }
     })
@@ -361,9 +370,12 @@ export default function CommandCenterPage() {
     if (tagFilter) base = base.filter((a) => a.tags?.some((at) => at.tag.id === tagFilter))
     if (debouncedSearch) {
       const q = debouncedSearch.toLowerCase()
+      const numSearch = parseInt(q.replace(/^a-0*/i, '').replace(/^0+/, '') || '0', 10)
+      const matchNum = !isNaN(numSearch) && numSearch > 0 ? numSearch : null
       base = base.filter((a) =>
         a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) ||
-        a.assignee?.name.toLowerCase().includes(q) || a.tags?.some((at) => at.tag.name.toLowerCase().includes(q))
+        a.assignee?.name.toLowerCase().includes(q) || a.tags?.some((at) => at.tag.name.toLowerCase().includes(q)) ||
+        (matchNum !== null && a.actionNumber === matchNum)
       )
     }
     return base
@@ -730,8 +742,13 @@ export default function CommandCenterPage() {
             <div className="flex items-start justify-between gap-2 mb-0.5">
               <h4
                 onClick={() => navigate(getActionPath(action))}
-                className={cn('text-[14px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors', action.status === 'completed' && 'line-through text-[#9ca3af]')}
+                className={cn('text-[14px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors flex items-center gap-1.5', action.status === 'completed' && 'line-through text-[#9ca3af]')}
               >
+                {action.actionNumber != null && (
+                  <span className="text-[11px] font-mono font-semibold text-[#9ca3af] shrink-0">
+                    A-{String(action.actionNumber).padStart(5, '0')}
+                  </span>
+                )}
                 {action.title}
               </h4>
               <div className="flex items-center gap-2 shrink-0">
@@ -1385,7 +1402,12 @@ export default function CommandCenterPage() {
                 <div className="w-7 h-7 rounded-lg bg-[#ede9fe] flex items-center justify-center">
                   <span className="material-symbols-outlined text-[#4648d4] text-[16px]">edit</span>
                 </div>
-                <h2 className="text-[15px] font-semibold text-[#111827]">Edit Action</h2>
+                <div>
+                  <h2 className="text-[15px] font-semibold text-[#111827]">Edit Action</h2>
+                  {editingAction.actionNumber != null && (
+                    <span className="text-[11px] font-mono font-semibold text-[#9ca3af]">A-{String(editingAction.actionNumber).padStart(5, '0')}</span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => navigate(getActionPath(editingAction))} className="p-1.5 text-[#9ca3af] hover:text-[#4648d4] rounded-lg hover:bg-[#f3f4f6] transition-colors" title="Open full detail page">

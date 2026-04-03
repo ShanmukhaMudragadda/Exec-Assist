@@ -230,6 +230,9 @@ export const listActions = async (req: AuthRequest, res: Response) => {
           .map(([key]) => key)
       : [];
 
+    const actionNumberMatch = search ? parseInt(search.replace(/^A-0*/i, '').replace(/^0+/, '') || '0', 10) : NaN;
+    const matchingActionNumber = !isNaN(actionNumberMatch) && actionNumberMatch > 0 ? actionNumberMatch : null;
+
     const searchCondition = search ? {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
@@ -237,6 +240,7 @@ export const listActions = async (req: AuthRequest, res: Response) => {
         { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
         { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
         ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
+        ...(matchingActionNumber ? [{ actionNumber: matchingActionNumber }] : []),
       ],
     } : null;
 
