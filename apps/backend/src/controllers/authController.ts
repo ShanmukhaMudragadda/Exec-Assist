@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { OAuth2Client } from 'google-auth-library';
 import { generateToken } from '../utils/jwt';
+import { logAudit } from '../services/auditService';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const prisma = new PrismaClient();
@@ -65,7 +66,9 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
     // Find or create user
     let user = await prisma.user.findUnique({ where: { email } });
 
+    let isNew = false;
     if (!user) {
+      isNew = true;
       user = await prisma.user.create({
         data: {
           email,
@@ -110,6 +113,15 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
 
     console.log('[googleAuth] user.avatar after save:', user.avatar);
     const token = generateToken({ id: user.id, email: user.email, role: user.role });
+
+    logAudit({
+      userId: user.id,
+      action: isNew ? 'user.signup' : 'user.login',
+      entityType: 'user',
+      entityId: user.id,
+      entityTitle: user.name,
+      req,
+    });
 
     res.json({
       user: {

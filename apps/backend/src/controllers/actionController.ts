@@ -6,6 +6,7 @@ import { AuthRequest } from '../middleware/auth';
 import { sendMentionNotificationEmail } from '../services/emailService';
 import { queueActionAssignmentEmail } from '../queue/emailQueue';
 import { sendPushNotification } from '../services/pushService';
+import { logAudit } from '../services/auditService';
 
 /** Extract unique userIds from @[Name](userId) mention tokens */
 function parseMentionIds(content: string): string[] {
@@ -123,6 +124,7 @@ const bulkUpdateSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     assigneeId: z.string().optional().nullable(),
     dueDate: z.string().optional().nullable(),
+    initiativeId: z.string().optional().nullable(),
   }),
 });
 
@@ -179,6 +181,16 @@ export const createAction = async (req: AuthRequest, res: Response) => {
         }
       }
     }
+
+    logAudit({
+      userId,
+      action: 'action.created',
+      entityType: 'action',
+      entityId: action.id,
+      entityTitle: action.title,
+      metadata: { initiativeId: action.initiativeId ?? null },
+      req,
+    });
 
     return res.status(201).json({ action });
   } catch (err) {
@@ -271,6 +283,14 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
         .catch(console.error);
     }
 
+    logAudit({
+      userId,
+      action: 'action.bulk_created',
+      entityType: 'action',
+      metadata: { count: created.length, initiativeId },
+      req,
+    });
+
     return res.status(201).json({ actions: created, count: created.length });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -302,13 +322,28 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
 
+    // If moving to a new initiative, verify the user has access to it
+    if (update.initiativeId) {
+      const { ok } = await canAccess(userId, update.initiativeId);
+      if (!ok) return res.status(403).json({ error: 'Access denied to target initiative' });
+    }
+
     const updateData: Record<string, unknown> = {};
     if (update.status !== undefined) updateData.status = update.status;
     if (update.priority !== undefined) updateData.priority = update.priority;
     if ('assigneeId' in update) updateData.assigneeId = update.assigneeId;
     if ('dueDate' in update) updateData.dueDate = update.dueDate ? new Date(update.dueDate) : null;
+    if ('initiativeId' in update) updateData.initiativeId = update.initiativeId ?? null;
 
     await prisma.action.updateMany({ where: { id: { in: accessibleIds } }, data: updateData });
+
+    logAudit({
+      userId,
+      action: 'action.bulk_updated',
+      entityType: 'action',
+      metadata: { count: accessibleIds.length, update },
+      req,
+    });
 
     return res.json({ updated: accessibleIds.length });
   } catch (err) {
@@ -341,6 +376,14 @@ export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
 
     await prisma.action.deleteMany({ where: { id: { in: accessibleIds } } });
+
+    logAudit({
+      userId,
+      action: 'action.bulk_deleted',
+      entityType: 'action',
+      metadata: { count: accessibleIds.length },
+      req,
+    });
 
     return res.json({ deleted: accessibleIds.length });
   } catch (err) {
@@ -437,6 +480,16 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    logAudit({
+      userId,
+      action: 'action.updated',
+      entityType: 'action',
+      entityId: updated.id,
+      entityTitle: updated.title,
+      metadata: { changes: data },
+      req,
+    });
+
     return res.json({ action: updated });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -468,6 +521,17 @@ export const deleteAction = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.action.delete({ where: { id: actionId } });
+
+    logAudit({
+      userId,
+      action: 'action.deleted',
+      entityType: 'action',
+      entityId: actionId,
+      entityTitle: action.title,
+      metadata: { initiativeId: action.initiativeId ?? null },
+      req,
+    });
+
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -634,6 +698,14 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
       };
     });
 
+    logAudit({
+      userId,
+      action: 'action.ai_generated',
+      entityType: 'action',
+      metadata: { count: actions.length, initiativeId },
+      req,
+    });
+
     return res.json({ actions, count: actions.length });
   } catch (err) {
     console.error(err);
@@ -712,6 +784,7 @@ export const getExecutiveBrief = async (req: AuthRequest, res: Response) => {
 // Standalone generate (no initiative context)
 export const generateStandaloneActions = async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.user!.id;
     const { content } = req.body as { content: string };
     if (!content?.trim()) return res.status(400).json({ error: 'Content is required' });
 
@@ -732,6 +805,14 @@ export const generateStandaloneActions = async (req: AuthRequest, res: Response)
         dueDate,
         tags: t.tags,
       };
+    });
+
+    logAudit({
+      userId,
+      action: 'action.ai_generated',
+      entityType: 'action',
+      metadata: { count: actions.length, standalone: true },
+      req,
     });
 
     return res.json({ actions, count: actions.length });
@@ -835,6 +916,14 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
         include: { user: { select: { id: true, name: true, avatar: true } } },
       });
       notifyMentions(content.trim(), userId, actionId).catch(console.error);
+
+      logAudit({
+        userId,
+        action: 'action.update_added',
+        entityType: 'action',
+        entityId: actionId,
+        req,
+      });
 
       // Notify action creator and assignee about new comment (skip the commenter)
       const notifyIds = new Set<string>();

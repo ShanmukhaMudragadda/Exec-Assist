@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import { UpdateProfileSchema } from '../utils/validators';
+import { logAudit } from '../services/auditService';
 
 const prisma = new PrismaClient();
 
@@ -17,6 +18,16 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
         id: true, email: true, name: true, role: true, emailVerified: true,
         avatar: true, timezone: true, pushNotificationsEnabled: true,
       },
+    });
+
+    logAudit({
+      userId,
+      action: 'user.profile_updated',
+      entityType: 'user',
+      entityId: userId,
+      entityTitle: user.name,
+      metadata: { fields: Object.keys(data) },
+      req,
     });
 
     res.json({ user });

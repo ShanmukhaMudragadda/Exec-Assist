@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 import { sendPushNotification } from '../services/pushService';
+import { logAudit } from '../services/auditService';
+import { sendInitiativeDailyDigest } from '../queue/emailQueue';
 
 const prisma = new PrismaClient();
 
@@ -67,6 +69,15 @@ export const createInitiative = async (req: AuthRequest, res: Response) => {
         members: { include: { user: { select: { id: true, name: true, avatar: true } } } },
         _count: { select: { actions: true } },
       },
+    });
+
+    logAudit({
+      userId,
+      action: 'initiative.created',
+      entityType: 'initiative',
+      entityId: initiative.id,
+      entityTitle: initiative.title,
+      req,
     });
 
     return res.status(201).json({ initiative });
@@ -303,6 +314,16 @@ export const updateInitiative = async (req: AuthRequest, res: Response) => {
         .catch(console.error);
     }
 
+    logAudit({
+      userId,
+      action: 'initiative.updated',
+      entityType: 'initiative',
+      entityId: initiativeId,
+      entityTitle: updated.title,
+      metadata: { changes: data },
+      req,
+    });
+
     return res.json({ initiative: updated });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -327,6 +348,15 @@ export const deleteInitiative = async (req: AuthRequest, res: Response) => {
     });
 
     await prisma.initiative.delete({ where: { id: initiativeId } });
+
+    logAudit({
+      userId,
+      action: 'initiative.deleted',
+      entityType: 'initiative',
+      entityId: initiativeId,
+      entityTitle: initiative.title,
+      req,
+    });
 
     // Notify all former members (fire-and-forget)
     membersToNotify
@@ -398,6 +428,15 @@ export const updateMember = async (req: AuthRequest, res: Response) => {
       },
       include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
     });
+    logAudit({
+      userId,
+      action: 'initiative.member_updated',
+      entityType: 'initiative',
+      entityId: initiativeId,
+      metadata: { memberId, changes: data },
+      req,
+    });
+
     return res.json({ member: updated });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -422,6 +461,16 @@ export const removeMember = async (req: AuthRequest, res: Response) => {
     });
 
     await prisma.initiativeMember.deleteMany({ where: { initiativeId, userId: memberId } });
+
+    logAudit({
+      userId,
+      action: 'initiative.member_removed',
+      entityType: 'initiative',
+      entityId: initiativeId,
+      entityTitle: initiative.title,
+      metadata: { memberId },
+      req,
+    });
 
     if (removedUser?.pushNotificationsEnabled) {
       sendPushNotification(memberId, {
@@ -488,6 +537,16 @@ export const addMember = async (req: AuthRequest, res: Response) => {
         }).catch((err) => console.error('[push] member added push failed:', err));
       }
 
+      logAudit({
+        userId,
+        action: 'initiative.member_added',
+        entityType: 'initiative',
+        entityId: initiativeId,
+        entityTitle: initiativeTitle,
+        metadata: { email: data.email, role: data.role },
+        req,
+      });
+
       return res.status(201).json({ member, pending: null });
     }
 
@@ -510,6 +569,16 @@ export const addMember = async (req: AuthRequest, res: Response) => {
 
     sendMemberAddedEmail(data.email, initiativeTitle, inviterName, initiativeId)
       .catch((err: unknown) => console.error('Member added email failed:', err));
+
+    logAudit({
+      userId,
+      action: 'initiative.member_added',
+      entityType: 'initiative',
+      entityId: initiativeId,
+      entityTitle: initiativeTitle,
+      metadata: { email: data.email, role: data.role, pending: true },
+      req,
+    });
 
     return res.status(201).json({ member: null, pending: { id: pending.id, email: pending.email, role: pending.role, department: pending.department, createdAt: pending.createdAt } });
   } catch (err) {
@@ -562,6 +631,14 @@ export const updateSettings = async (req: AuthRequest, res: Response) => {
       update: data,
       create: { initiativeId, ...data },
     });
+
+    // Fire digest immediately when settings are saved (idempotent — skips if already sent today)
+    if (settings.dailyReportEnabled) {
+      sendInitiativeDailyDigest(initiativeId).catch((err) =>
+        console.error('[settings] Immediate digest trigger failed for', initiativeId, err)
+      );
+    }
+
     return res.json({ settings });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -608,6 +685,17 @@ export const createTag = async (req: AuthRequest, res: Response) => {
       update: { color: data.color ?? '#4648d4' },
       create: { initiativeId, name: data.name, color: data.color ?? '#4648d4' },
     });
+
+    logAudit({
+      userId,
+      action: 'tag.created',
+      entityType: 'tag',
+      entityId: tag.id,
+      entityTitle: tag.name,
+      metadata: { initiativeId },
+      req,
+    });
+
     return res.status(201).json({ tag });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
@@ -626,6 +714,16 @@ export const deleteTag = async (req: AuthRequest, res: Response) => {
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can delete tags' });
 
     await prisma.tag.deleteMany({ where: { id: tagId, initiativeId } });
+
+    logAudit({
+      userId,
+      action: 'tag.deleted',
+      entityType: 'tag',
+      entityId: tagId,
+      metadata: { initiativeId },
+      req,
+    });
+
     return res.json({ success: true });
   } catch (err) {
     console.error(err);

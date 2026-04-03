@@ -15,7 +15,7 @@ import initiativeRoutes from './routes/initiativeRoutes';
 import transcriptRoutes from './routes/transcriptRoutes';
 import pushRoutes from './routes/pushRoutes';
 import { errorHandler } from './middleware/errorHandler';
-import { scheduleDailyReports } from './queue/emailQueue';
+import { scheduleDailyReports, checkMissedDigests } from './queue/emailQueue';
 import { initWebPush } from './services/pushService';
 
 const app = express();
@@ -96,6 +96,7 @@ app.use(errorHandler);
 
 // Start daily report scheduler and init push notifications
 scheduleDailyReports();
+checkMissedDigests();
 initWebPush();
 
 const PORT = process.env.PORT || 3000;

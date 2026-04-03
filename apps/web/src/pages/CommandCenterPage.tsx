@@ -151,6 +151,7 @@ export default function CommandCenterPage() {
   const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [showBulkAssigneeMenu, setShowBulkAssigneeMenu] = useState(false)
+  const [showBulkInitiativeMenu, setShowBulkInitiativeMenu] = useState(false)
 
   // Initiative edit state
   const [showEditInitiative, setShowEditInitiative] = useState(false)
@@ -237,6 +238,12 @@ export default function CommandCenterPage() {
     enabled: !initiativeId,
     placeholderData: (prev: any) => prev,
   } as any)
+
+  const { data: allInitiativesData } = useQuery({
+    queryKey: ['initiatives-list'],
+    queryFn: () => initiativesApi.list().then((r) => r.data?.initiatives || []),
+  })
+  const allInitiatives: { id: string; title: string }[] = allInitiativesData || []
 
   const { data: workspaceTagsData } = useQuery({
     queryKey: ['tags-all'],
@@ -503,10 +510,11 @@ export default function CommandCenterPage() {
     setShowBulkStatusMenu(false)
     setShowBulkPriorityMenu(false)
     setShowBulkAssigneeMenu(false)
+    setShowBulkInitiativeMenu(false)
     setConfirmBulkDelete(false)
   }
 
-  const handleBulkUpdate = async (update: { status?: string; priority?: string }) => {
+  const handleBulkUpdate = async (update: { status?: string; priority?: string; assigneeId?: string | null; initiativeId?: string | null }) => {
     if (selectedActionIds.size === 0) return
     setBulkUpdating(true)
     try {
@@ -1880,6 +1888,35 @@ export default function CommandCenterPage() {
                 </>
               )
             })()}
+          </div>
+
+          {/* Initiative */}
+          <div className="relative">
+            <button onClick={() => { setShowBulkInitiativeMenu((v) => !v); setShowBulkPriorityMenu(false); setShowBulkAssigneeMenu(false) }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[12px]">folder</span>
+              Initiative
+              <span className="material-symbols-outlined text-[11px]">expand_more</span>
+            </button>
+            {showBulkInitiativeMenu && (
+              <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-52 z-10 max-h-60 overflow-y-auto">
+                <button onClick={() => { handleBulkUpdate({ initiativeId: null }); setShowBulkInitiativeMenu(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[#9ca3af] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">folder_off</span>
+                  No Initiative
+                </button>
+                {allInitiatives.map((ini) => (
+                  <button key={ini.id} onClick={() => { handleBulkUpdate({ initiativeId: ini.id }); setShowBulkInitiativeMenu(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors text-left"
+                  >
+                    <span className="material-symbols-outlined text-[14px] text-[#4648d4] shrink-0">folder</span>
+                    <span className="truncate">{ini.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex-1" />

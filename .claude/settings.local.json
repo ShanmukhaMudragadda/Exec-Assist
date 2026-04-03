@@ -99,7 +99,8 @@
       "Bash(npx web-push:*)",
       "Bash(rm:*)",
       "Bash(PRISMA_DISABLE_WARNINGS=true npx prisma db push)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(pm2 list:*)"
     ]
   }
 }

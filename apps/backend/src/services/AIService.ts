@@ -303,3 +303,44 @@ Rules:
   } catch {}
   return [{ headline: 'Daily Brief', detail: text, metric: null, type: 'info' }];
 }
+
+export interface DigestAction {
+  title: string;
+  status: string;
+  priority: string;
+  assigneeName: string | null;
+  dueDate: string | null;
+  isOverdue: boolean;
+  daysSinceUpdate: number;
+}
+
+export async function generateDailyDigestReport(
+  initiativeTitle: string,
+  actions: DigestAction[]
+): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured.');
+
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+  const today = new Date().toISOString().split('T')[0];
+  const stale = actions.filter((a) => a.daysSinceUpdate >= 3 && a.status !== 'completed');
+  const overdue = actions.filter((a) => a.isOverdue);
+  const completed = actions.filter((a) => a.status === 'completed');
+  const inProgress = actions.filter((a) => a.status === 'in-progress');
+  const todo = actions.filter((a) => a.status === 'todo');
+
+  const prompt = `You are a senior project manager. Write a 2-3 sentence executive insight for the daily report of initiative "${initiativeTitle}" as of ${today}.
+
+Data:
+- Total: ${actions.length} actions | Completed: ${completed.length} | In Progress: ${inProgress.length} | To Do: ${todo.length}
+- Overdue: ${overdue.length} | Stale (3+ days no update): ${stale.length}
+- Overdue items: ${overdue.map((a) => `"${a.title}" (${a.assigneeName || 'Unassigned'})`).join(', ') || 'none'}
+- Stale items: ${stale.map((a) => `"${a.title}" — ${a.daysSinceUpdate}d`).join(', ') || 'none'}
+- In progress: ${inProgress.map((a) => `"${a.title}" (${a.assigneeName || 'Unassigned'})`).join(', ') || 'none'}
+
+Write ONLY plain text — 2-3 sharp, direct sentences. No HTML, no bullet points, no headings. Focus on what needs attention and overall health. Be specific about action names and owners.`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim().replace(/```[a-z]*/gi, '').replace(/```/g, '');
+}

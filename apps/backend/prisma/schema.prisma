@@ -29,6 +29,26 @@ model User {
   assignedActions     Action[]               @relation("ActionAssignee")
   actionUpdates       ActionUpdate[]
   pushSubscriptions   PushSubscription[]
+  auditLogs           AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String?
+  entityId    String?
+  entityTitle String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
 }
 
 model Initiative {
@@ -87,6 +107,7 @@ model InitiativeSettings {
   dailyReportEnabled  Boolean  @default(false)
   dailyReportTime     String   @default("09:00")
   dailyReportEmails   String[] @default([])
+  lastDigestSentDate  String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
