@@ -736,77 +736,75 @@ export default function CommandCenterPage() {
             {isSelected && <span className="material-symbols-outlined text-white" style={{ fontSize: 11, fontVariationSettings: "'FILL' 1, 'wght' 700" }}>check</span>}
           </button>
         </div>
-        <div className="flex-1 flex items-start gap-3 px-4 py-2.5 min-w-0">
-          <div className={cn('w-1.5 h-1.5 rounded-full mt-[5px] shrink-0', PRIORITY_DOT[action.priority] || 'bg-[#e5e7eb]')} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2 mb-0.5">
-              <h4
-                onClick={() => navigate(getActionPath(action))}
-                className={cn('text-[14px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors flex items-center gap-1.5', action.status === 'completed' && 'line-through text-[#9ca3af]')}
-              >
-                {action.actionNumber != null && (
-                  <span className="text-[11px] font-mono font-semibold text-[#9ca3af] shrink-0">
-                    A-{String(action.actionNumber).padStart(5, '0')}
-                  </span>
-                )}
-                {action.title}
-              </h4>
-              <div className="flex items-center gap-2 shrink-0">
-                {isOD ? (
-                  <span className="text-[12px] font-semibold text-[#dc2626]">{format(new Date(action.dueDate!), 'MMM d')}</span>
-                ) : action.dueDate ? (
-                  <span className="text-[12px] text-[#9ca3af]">{format(new Date(action.dueDate), 'MMM d')}</span>
-                ) : null}
-              </div>
+        <div className="flex-1 flex flex-col min-w-0 px-3 py-2 gap-1">
+          {/* Top bar: action number + due date + actions */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', PRIORITY_DOT[action.priority] || 'bg-[#e5e7eb]')} />
+              {action.actionNumber != null && (
+                <span className="text-[11px] font-mono font-semibold text-[#9ca3af]">
+                  A-{String(action.actionNumber).padStart(5, '0')}
+                </span>
+              )}
+              {isOD ? (
+                <span className="text-[11px] font-semibold text-[#dc2626]">{format(new Date(action.dueDate!), 'MMM d')}</span>
+              ) : action.dueDate ? (
+                <span className="text-[11px] text-[#9ca3af]">{format(new Date(action.dueDate), 'MMM d')}</span>
+              ) : null}
             </div>
-            {action.description && <p className="text-[12px] text-[#9ca3af] line-clamp-1 mb-1">{action.description}</p>}
-            {showInitiativeLabel && action.initiative && (
-              <p className="text-[11px] text-[#9ca3af] mb-1">
-                <span className="inline-flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: action.initiative.status === 'at-risk' ? '#dc2626' : '#4648d4' }} />
-                  {action.initiative.title}
-                </span>
-              </p>
-            )}
-            {actionTags.length > 0 && (
-              <div className="flex gap-1 mt-1 flex-wrap">
-                {actionTags.map((tag) => (
-                  <span key={tag.id} className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-[#f3f4f6] text-[#6b7280]">#{tag.name}</span>
-                ))}
-              </div>
-            )}
-            <div className="flex items-center justify-between mt-1.5">
-              <div className="flex items-center gap-2">
-                {action.assignee ? (
-                  <div className="flex items-center gap-1.5">
-                    <Avatar name={action.assignee.name} avatar={action.assignee.avatar} size="xs" />
-                    <span className="text-[12px] text-[#6b7280]">{action.assignee.name}</span>
-                  </div>
-                ) : (
-                  <span className="text-[12px] text-[#d1d5db]">Unassigned</span>
-                )}
-                <span className={cn('px-1.5 py-0.5 rounded-md text-[11px] font-semibold', STATUS_BADGE[action.status]?.cls || STATUS_BADGE.todo.cls)}>
-                  {STATUS_BADGE[action.status]?.label || 'To Do'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {action.status !== 'completed' && (
-                  <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                    Done
-                  </button>
-                )}
-                <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
-                  title="Quick edit"
+            <div className="flex items-center gap-1.5 shrink-0">
+              {action.status !== 'completed' && (
+                <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[13px]">edit</span>
-                  Edit
+                  <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  Done
                 </button>
-              </div>
+              )}
+              <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
+              >
+                <span className="material-symbols-outlined text-[12px]">edit</span>
+                Edit
+              </button>
             </div>
+          </div>
+          {/* Title */}
+          <h4
+            onClick={() => navigate(getActionPath(action))}
+            className={cn('text-[14px] font-medium text-[#111827] truncate cursor-pointer hover:text-[#4648d4] transition-colors', action.status === 'completed' && 'line-through text-[#9ca3af]')}
+          >
+            {action.title}
+          </h4>
+          {action.description && <p className="text-[12px] text-[#9ca3af] line-clamp-1">{action.description}</p>}
+          {showInitiativeLabel && action.initiative && (
+            <p className="text-[11px] text-[#9ca3af]">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: action.initiative.status === 'at-risk' ? '#dc2626' : '#4648d4' }} />
+                {action.initiative.title}
+              </span>
+            </p>
+          )}
+          {actionTags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {actionTags.map((tag) => (
+                <span key={tag.id} className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-[#f3f4f6] text-[#6b7280]">#{tag.name}</span>
+              ))}
+            </div>
+          )}
+          {/* Bottom: assignee + status */}
+          <div className="flex items-center gap-2">
+            {action.assignee ? (
+              <div className="flex items-center gap-1.5">
+                <Avatar name={action.assignee.name} avatar={action.assignee.avatar} size="xs" />
+                <span className="text-[12px] text-[#6b7280]">{action.assignee.name}</span>
+              </div>
+            ) : (
+              <span className="text-[12px] text-[#d1d5db]">Unassigned</span>
+            )}
+            <span className={cn('px-1.5 py-0.5 rounded-md text-[11px] font-semibold', STATUS_BADGE[action.status]?.cls || STATUS_BADGE.todo.cls)}>
+              {STATUS_BADGE[action.status]?.label || 'To Do'}
+            </span>
           </div>
         </div>
       </div>
