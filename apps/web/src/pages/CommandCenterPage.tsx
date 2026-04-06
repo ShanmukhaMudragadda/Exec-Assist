@@ -717,6 +717,7 @@ export default function CommandCenterPage() {
     const isDueSoon = action.dueDate && !isOD && differenceInDays(new Date(action.dueDate), now) <= 3 && action.status !== 'completed'
     const actionTags = action.tags?.map((at) => at.tag) || []
     const isSelected = selectedActionIds.has(action.id)
+    const canModifyAction = isOwnerOrAdmin || action.creator?.id === user?.id || action.assignee?.id === user?.id
     return (
       <div
         className={cn('group relative flex items-start gap-0 transition-colors duration-100',
@@ -753,7 +754,7 @@ export default function CommandCenterPage() {
               ) : null}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {action.status !== 'completed' && (
+              {canModifyAction && action.status !== 'completed' && (
                 <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
                   className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
                 >
@@ -761,12 +762,14 @@ export default function CommandCenterPage() {
                   Done
                 </button>
               )}
-              <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
-              >
-                <span className="material-symbols-outlined text-[12px]">edit</span>
-                Edit
-              </button>
+              {canModifyAction && (
+                <button onClick={(e) => { e.stopPropagation(); openEditAction(action) }}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[12px]">edit</span>
+                  Edit
+                </button>
+              )}
             </div>
           </div>
           {/* Title */}

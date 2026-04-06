@@ -140,8 +140,8 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const PAGE = 25;
-    const isMemberOnly = !canEdit(role);
-    const memberFilter = isMemberOnly ? { OR: [{ assigneeId: userId }, { createdBy: userId }] } : {};
+    // All initiative members see all actions; edit rights are controlled separately
+    const memberFilter = {};
 
     const [initiative, pending, actionsTotal] = await Promise.all([
       prisma.initiative.findUnique({
@@ -208,12 +208,10 @@ export const listActions = async (req: AuthRequest, res: Response) => {
     const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
-    const isMemberOnly = !canEdit(role);
     const now = new Date();
 
-    const accessCondition: object = isMemberOnly
-      ? { initiativeId, OR: [{ assigneeId: userId }, { createdBy: userId }] }
-      : { initiativeId };
+    // All initiative members see all actions; edit rights are controlled separately
+    const accessCondition: object = { initiativeId };
 
     const filterCondition =
       filter === 'open'      ? { status: { notIn: ['completed'] } } :

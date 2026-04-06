@@ -697,7 +697,7 @@ export default function InitiativeDetailPage() {
                   const barColor = isOD ? '#dc2626' : isDueSoon ? '#2563eb' : STATUS_BORDER[action.status] ? STATUS_BORDER[action.status].replace('border-l-', '').replace('[', '').replace(']', '') : '#e5e7eb'
                   const dotColor = PRIORITY_DOT[action.priority]?.replace('bg-', '').replace('[', '').replace(']', '') || '#e5e7eb'
                   const actionTags = action.tags?.map((at) => at.tag) || []
-
+                  const canModifyAction = isOwnerOrAdmin || (action as any).creator?.id === user?.id || action.assignee?.id === user?.id
                   const isSelected = selectedActionIds.has(action.id)
                   return (
                     <div
@@ -787,12 +787,20 @@ export default function InitiativeDetailPage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              {action.status !== 'completed' && (
+                              {canModifyAction && action.status !== 'completed' && (
                                 <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
                                   className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
                                 >
                                   <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                                   Done
+                                </button>
+                              )}
+                              {canModifyAction && (
+                                <button onClick={(e) => { e.stopPropagation(); navigate(`/initiatives/${initiativeId}/actions/${action.id}`) }}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#6b7280] border border-[#e5e7eb] hover:bg-[#ede9fe] hover:text-[#4648d4] hover:border-[#c4b5fd] transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">edit</span>
+                                  Edit
                                 </button>
                               )}
                             </div>
