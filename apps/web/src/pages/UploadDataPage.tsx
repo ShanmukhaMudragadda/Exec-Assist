@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import * as XLSX from 'xlsx'
 import AppLayout from '@/components/layout/AppLayout'
 import { actionsApi } from '@/services/api'
 import { cn } from '@/lib/utils'
@@ -58,6 +59,9 @@ export default function UploadDataPage() {
   const [recordError, setRecordError] = useState('')
   const [recordSeconds, setRecordSeconds] = useState(0)
   const [transcribing, setTranscribing] = useState(false)
+  const [sheetRows, setSheetRows] = useState<{ title: string; description: string; priority: string; dueDate: string; assignee: string }[]>([])
+  const [sheetFileName, setSheetFileName] = useState('')
+  const [sheetError, setSheetError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const sheetsFileRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
@@ -366,6 +370,51 @@ export default function UploadDataPage() {
     }
   }
 
+  const handleSheetFile = (file: File) => {
+    setSheetError('')
+    setSheetRows([])
+    setSheetFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array', cellDates: true })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+
+        // Convert sheet to CSV and trim aggressively to keep the AI prompt small
+        const allRows = XLSX.utils.sheet_to_csv(ws)
+          .split('\n')
+          .map((r) => r.trim())
+          .filter((r) => r.replace(/,/g, '').trim())  // drop empty rows
+        if (allRows.length === 0) { setSheetError('Spreadsheet is empty.'); return }
+
+        const MAX_ROWS = 150
+        const trimmedRows = allRows.slice(0, MAX_ROWS)
+        let csv = trimmedRows.join('\n')
+        if (csv.length > 3000) csv = csv.slice(0, 3000) + '\n...(truncated)'
+
+        // Store row count for UI
+        setSheetRows(allRows.slice(1).map(() => ({ title: '', description: '', priority: 'medium', dueDate: '', assignee: '' })))
+
+        // Use generateStandalone always — faster (no member lookup overhead)
+        setGenerating(true)
+        try {
+          const res = await actionsApi.generateFromSheet(csv, initiativeId || undefined)
+          setGeneratedActions((res.data as any)?.actions || [])
+          setSheetRows([]) // clear raw rows — AI result is now in generatedActions
+        } catch {
+          setSheetError('AI failed to process the file. Please try again.')
+          setSheetRows([])
+        } finally {
+          setGenerating(false)
+        }
+      } catch {
+        setSheetError('Failed to read file. Make sure it is a valid CSV or Excel file.')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
   const handleGenerate = async () => {
     if (!transcript.trim()) return
     setGenerating(true)
@@ -388,7 +437,14 @@ export default function UploadDataPage() {
         queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
       } else {
         await Promise.all(generatedActions.map((a) =>
-          actionsApi.createStandalone({ title: a.title, description: a.description || undefined, priority: a.priority || 'medium', dueDate: a.dueDate || null })
+          actionsApi.createStandalone({
+            title: a.title,
+            description: a.description || undefined,
+            priority: a.priority || 'medium',
+            status: a.status || 'todo',
+            dueDate: a.dueDate || null,
+            assigneeId: a.assigneeId || null,
+          })
         ))
       }
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
@@ -398,7 +454,7 @@ export default function UploadDataPage() {
     }
   }
 
-  const showReview = generatedActions.length > 0 && (mode === 'transcript' || mode === 'live')
+  const showReview = generatedActions.length > 0 && (mode === 'transcript' || mode === 'live' || mode === 'sheets')
 
   return (
     <AppLayout>
@@ -511,21 +567,47 @@ export default function UploadDataPage() {
               {mode === 'sheets' && (
                 <div className="space-y-4">
                   <div
-                    onClick={() => sheetsFileRef.current?.click()}
-                    className="border-2 border-dashed border-[#e5e7eb] rounded-xl p-12 text-center cursor-pointer hover:border-[#4648d4]/50 hover:bg-[#f7f9fb] transition-all"
+                    onClick={() => !generating && sheetsFileRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault(); setDragOver(false)
+                      const file = e.dataTransfer.files[0]
+                      if (file && !generating) handleSheetFile(file)
+                    }}
+                    className={cn(
+                      'border-2 border-dashed rounded-xl p-12 text-center transition-all',
+                      generating ? 'border-[#4648d4]/40 bg-[#f5f3ff] cursor-wait' :
+                      dragOver ? 'border-[#4648d4] bg-[#f5f3ff] cursor-pointer' :
+                      'border-[#e5e7eb] hover:border-[#4648d4]/50 hover:bg-[#f7f9fb] cursor-pointer'
+                    )}
                   >
-                    <span className="material-symbols-outlined text-4xl text-[#9ca3af] block mb-3">table_chart</span>
-                    <p className="text-sm font-semibold text-[#374151]">Upload Spreadsheet</p>
-                    <p className="text-[12px] text-[#9ca3af] mt-1">CSV · XLSX supported</p>
-                    <input ref={sheetsFileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" />
+                    {generating ? (
+                      <>
+                        <div className="w-8 h-8 border-2 border-[#4648d4]/30 border-t-[#4648d4] rounded-full animate-spin mx-auto mb-3" />
+                        <p className="text-sm font-semibold text-[#4648d4]">AI is reading your spreadsheet…</p>
+                        <p className="text-[12px] text-[#9ca3af] mt-1">Figuring out the tasks from your data</p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-4xl text-[#9ca3af] block mb-3">table_chart</span>
+                        <p className="text-sm font-semibold text-[#374151]">Upload Spreadsheet</p>
+                        <p className="text-[12px] text-[#9ca3af] mt-1">CSV · XLSX · XLS — drag & drop or click</p>
+                        <p className="text-[11px] text-[#c4c4c4] mt-2">AI will figure out the tasks — any column structure works</p>
+                      </>
+                    )}
+                    <input
+                      ref={sheetsFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleSheetFile(f); e.target.value = '' }}
+                    />
                   </div>
-                  <div className="p-3 bg-[#f7f9fb] border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-lg text-xs text-[#6b7280]">
-                    <p className="font-semibold mb-1">Expected columns:</p>
-                    <p className="text-[#9ca3af]">Title, Description, Assignee, Due Date, Priority</p>
-                  </div>
-                  <button disabled className="w-full py-3 bg-[#4648d4] text-white font-bold rounded-xl opacity-40 text-sm cursor-not-allowed">
-                    Upload & Import
-                  </button>
+
+                  {sheetError && (
+                    <p className="text-[12px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-lg px-3 py-2">{sheetError}</p>
+                  )}
                 </div>
               )}
 

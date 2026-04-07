@@ -132,6 +132,7 @@ export default function CommandCenterPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
+  const [showCollabPopover, setShowCollabPopover] = useState(false)
   const [showAddAction, setShowAddAction] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('members')
@@ -207,6 +208,10 @@ export default function CommandCenterPage() {
     setHasMoreActions(false)
     setEditingAction(null)
     setShowEditInitiative(false)
+    // When switching to CC mode, remove stale cached data so fresh data is always fetched
+    if (!initiativeId) {
+      queryClient.removeQueries({ queryKey: ['command-center'] })
+    }
   }, [initiativeId])
 
   useEffect(() => {
@@ -236,7 +241,6 @@ export default function CommandCenterPage() {
     queryKey: ['command-center', actionFilter, debouncedSearch],
     queryFn: () => actionsApi.getCommandCenter(undefined, actionFilter, debouncedSearch).then((r) => r.data),
     enabled: !initiativeId,
-    placeholderData: (prev: any) => prev,
   } as any)
 
   const { data: allInitiativesData } = useQuery({
@@ -701,8 +705,12 @@ export default function CommandCenterPage() {
                   : null
                 return count != null ? `${label} (${count})` : label
               }
-              // Initiative mode: client-side counts
-              const count = f === 'all' ? baseActions.length : f === 'open' ? openActions.length : f === 'overdue' ? overdueActions.length : baseActions.filter((a) => a.status === 'completed').length
+              // Initiative mode: use server-side counts from actionsMeta
+              const meta = (initiative as any)?.actionsMeta
+              const count = f === 'all' ? (meta?.total ?? baseActions.length)
+                : f === 'open' ? (meta?.open ?? openActions.length)
+                : f === 'overdue' ? (meta?.overdue ?? overdueActions.length)
+                : (meta?.completed ?? baseActions.filter((a) => a.status === 'completed').length)
               return `${label} (${count})`
             })()}
           </button>
@@ -756,10 +764,11 @@ export default function CommandCenterPage() {
             <div className="flex items-center gap-1.5 shrink-0">
               {canModifyAction && action.status !== 'completed' && (
                 <button onClick={(e) => { e.stopPropagation(); handleUpdateAction(action.id, 'completed') }}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#f0fdf4] text-[#16a34a] border border-[#bbf7d0] hover:bg-[#dcfce7] transition-colors"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-white text-[#16a34a] border border-[#16a34a] hover:bg-[#f0fdf4] active:bg-[#dcfce7] transition-colors"
+                  title="Mark as complete"
                 >
-                  <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  Done
+                  <span className="material-symbols-outlined text-[12px]">radio_button_unchecked</span>
+                  Mark done
                 </button>
               )}
               {canModifyAction && (
@@ -857,7 +866,7 @@ export default function CommandCenterPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {/* Collaborator avatars */}
+                {/* Collaborator avatars with workload popover */}
                 {(() => {
                   const creatorInMembers = members.some((m) => m.userId === initiative.creator.id)
                   const all = [
@@ -867,18 +876,68 @@ export default function CommandCenterPage() {
                   const visible = all.slice(0, 5)
                   const overflow = all.length - 5
                   return (
-                    <button onClick={() => { setShowSettings(true); setSettingsTab('members') }} className="flex items-center hover:opacity-90 transition-opacity">
-                      <div className="flex -space-x-2">
-                        {visible.map((c) => (
-                          <div key={c.id} title={`${c.name} (${c.role})`} className="ring-2 ring-white rounded-full">
-                            <Avatar name={c.name} avatar={c.avatar} size="sm" />
+                    <div
+                      className="relative"
+                      onMouseEnter={() => setShowCollabPopover(true)}
+                      onMouseLeave={() => setShowCollabPopover(false)}
+                    >
+                      <button onClick={() => { setShowSettings(true); setSettingsTab('members') }} className="flex items-center hover:opacity-90 transition-opacity">
+                        <div className="flex -space-x-2">
+                          {visible.map((c) => (
+                            <div key={c.id} className="ring-2 ring-white rounded-full">
+                              <Avatar name={c.name} avatar={c.avatar} size="sm" />
+                            </div>
+                          ))}
+                          {overflow > 0 && (
+                            <div className="w-7 h-7 rounded-full bg-[#f2f4f6] text-[#6b7280] text-[10px] font-bold flex items-center justify-center ring-2 ring-white">+{overflow}</div>
+                          )}
+                        </div>
+                      </button>
+                      {showCollabPopover && (
+                        <div className="absolute right-0 top-full mt-2 z-[200] bg-white border border-[#e5e7eb] rounded-2xl shadow-2xl overflow-hidden" style={{ minWidth: 260 }}>
+                          {/* Header */}
+                          <div className="px-4 py-3 bg-gradient-to-r from-[#f5f3ff] to-[#ede9fe] border-b border-[#e5e7eb]">
+                            <p className="text-[12px] font-bold text-[#4648d4] tracking-wide flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>group</span>
+                              Team Workload
+                            </p>
                           </div>
-                        ))}
-                        {overflow > 0 && (
-                          <div className="w-7 h-7 rounded-full bg-[#f2f4f6] text-[#6b7280] text-[10px] font-bold flex items-center justify-center ring-2 ring-white">+{overflow}</div>
-                        )}
-                      </div>
-                    </button>
+                          {/* Members */}
+                          <div className="p-2">
+                            {all.map((c) => {
+                              const open = baseActions.filter((a) => a.assignee?.id === c.id && a.status !== 'completed').length
+                              const total = baseActions.filter((a) => a.assignee?.id === c.id).length
+                              const pct = total > 0 ? Math.round((open / total) * 100) : 0
+                              const barColor = open === 0 ? '#e5e7eb' : open >= 5 ? '#dc2626' : '#4648d4'
+                              return (
+                                <div key={c.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-[#f5f3ff] transition-colors">
+                                  <div className="relative shrink-0">
+                                    <Avatar name={c.name} avatar={c.avatar} size="sm" />
+                                    {open > 0 && (
+                                      <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#4648d4] text-white text-[8px] font-bold flex items-center justify-center leading-none">{open}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                                      <p className="text-[12px] font-semibold text-[#111827] truncate">{c.name}</p>
+                                      <span className="text-[11px] font-semibold shrink-0" style={{ color: barColor }}>
+                                        {open}<span className="text-[#c4c4c4] font-normal">/{total}</span>
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 h-1 bg-[#f3f4f6] rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                                      </div>
+                                      <span className="text-[10px] text-[#9ca3af] capitalize shrink-0">{c.role}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )
                 })()}
                 {isOwnerOrAdmin && (
@@ -1056,29 +1115,37 @@ export default function CommandCenterPage() {
               <div className="grid grid-cols-3 gap-3 text-center">
                 {initiativeId ? (
                   <>
-                    <div>
-                      <p className="text-[22px] font-bold text-[#111827] tabular-nums leading-none">{filteredInitiativeActions.length}</p>
-                      <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Total</p>
-                    </div>
-                    <div>
-                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{filteredInitiativeActions.filter((a) => a.status !== 'completed').length}</p>
-                      <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Open</p>
-                    </div>
-                    <div>
-                      {(() => { const od = filteredInitiativeActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed').length; return (
-                        <p className={cn('text-[22px] font-bold tabular-nums leading-none', od > 0 ? 'text-[#dc2626]' : 'text-[#111827]')}>{od}</p>
-                      ) })()}
-                      <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
-                    </div>
+                    {(() => {
+                      const meta = (initiative as any)?.actionsMeta
+                      const total = meta?.total ?? filteredInitiativeActions.length
+                      const open = meta?.open ?? filteredInitiativeActions.filter((a) => a.status !== 'completed').length
+                      const overdue = meta?.overdue ?? filteredInitiativeActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed').length
+                      return (
+                        <>
+                          <div>
+                            <p className="text-[22px] font-bold text-[#111827] tabular-nums leading-none">{total}</p>
+                            <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Total</p>
+                          </div>
+                          <div>
+                            <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{open}</p>
+                            <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Open</p>
+                          </div>
+                          <div>
+                            <p className={cn('text-[22px] font-bold tabular-nums leading-none', overdue > 0 ? 'text-[#dc2626]' : 'text-[#111827]')}>{overdue}</p>
+                            <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </>
                 ) : (
                   <>
                     <div>
-                      <p className="text-[22px] font-bold text-[#111827] tabular-nums leading-none">{openActions.length}</p>
+                      <p className="text-[22px] font-bold text-[#111827] tabular-nums leading-none">{ccStats?.open ?? openActions.length}</p>
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Open</p>
                     </div>
                     <div>
-                      <p className={cn('text-[22px] font-bold tabular-nums leading-none', overdueActions.length > 0 ? 'text-[#dc2626]' : 'text-[#111827]')}>{overdueActions.length}</p>
+                      <p className={cn('text-[22px] font-bold tabular-nums leading-none', (ccStats?.overdue ?? overdueActions.length) > 0 ? 'text-[#dc2626]' : 'text-[#111827]')}>{ccStats?.overdue ?? overdueActions.length}</p>
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
                     </div>
                     <div>
@@ -1107,7 +1174,7 @@ export default function CommandCenterPage() {
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
               <div className="px-4 py-3 border-b border-[#f2f4f6] flex items-center justify-between">
                 <h3 className="text-[12px] font-bold text-[#9ca3af] uppercase tracking-widest">Recent Activity</h3>
-                <span className="text-[11px] text-[#c4c4c4]">{baseActions.length} action{baseActions.length !== 1 ? 's' : ''}</span>
+                <span className="text-[11px] text-[#c4c4c4]">{initiativeId ? ((initiative as any)?.actionsMeta?.total ?? baseActions.length) : (ccStats?.all ?? baseActions.length)} action{(initiativeId ? ((initiative as any)?.actionsMeta?.total ?? baseActions.length) : (ccStats?.all ?? baseActions.length)) !== 1 ? 's' : ''}</span>
               </div>
               {baseActions.length === 0 ? (
                 <div className="px-4 py-8 flex flex-col items-center gap-2">

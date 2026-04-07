@@ -828,6 +828,58 @@ export const generateStandaloneActions = async (req: AuthRequest, res: Response)
   }
 };
 
+export const generateActionsFromSheet = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { content, initiativeId } = req.body as { content: string; initiativeId?: string };
+    if (!content?.trim()) return res.status(400).json({ error: 'Content is required' });
+
+    // Fetch members so AI can match assignee names to real users
+    let membersList: { id: string; name: string; profile?: string }[] = [];
+    if (initiativeId && (await canAccess(userId, initiativeId)).ok) {
+      const members = await prisma.initiativeMember.findMany({
+        where: { initiativeId },
+        include: { user: { select: { id: true, name: true } } },
+      });
+      const initiative = await prisma.initiative.findUnique({
+        where: { id: initiativeId },
+        include: { creator: { select: { id: true, name: true } } },
+      });
+      membersList = members.map((m) => ({ id: m.userId, name: m.user.name, profile: (m as any).department || undefined }));
+      if (initiative?.creator && !membersList.find((ml) => ml.id === initiative.creator.id)) {
+        membersList.unshift({ id: initiative.creator.id, name: initiative.creator.name, profile: 'owner' });
+      }
+    }
+
+    const { extractTasksFromExcel } = await import('../services/AIService');
+    const extracted = await extractTasksFromExcel(content, membersList);
+
+    const actions = extracted.map((t) => {
+      let dueDate: string | null = null;
+      if (t.dueDate) {
+        const d = new Date(t.dueDate);
+        dueDate = isNaN(d.getTime()) ? null : t.dueDate;
+      }
+      return {
+        title: t.title,
+        description: t.description ?? null,
+        priority: t.priority,
+        status: t.status ?? 'todo',
+        dueDate,
+        assigneeId: t.assigneeIds?.[0] ?? null,
+        tags: t.tags,
+      };
+    });
+
+    logAudit({ userId, action: 'action.ai_generated', entityType: 'action', metadata: { count: actions.length, source: 'sheet' }, req });
+    return res.json({ actions, count: actions.length });
+  } catch (err) {
+    console.error(err);
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+};
+
 export const updateActionUpdate = async (req: AuthRequest, res: Response) => {
   try {
     const { updateId } = req.params;

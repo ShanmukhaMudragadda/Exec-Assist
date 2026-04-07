@@ -117,11 +117,23 @@ export const listInitiatives = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    const initiativeIds = initiatives.map((i) => i.id);
+
+    // Get accurate completed counts per initiative in one query
+    const completedCounts = initiativeIds.length
+      ? await prisma.action.groupBy({
+          by: ['initiativeId'],
+          where: { initiativeId: { in: initiativeIds }, status: 'completed' },
+          _count: { id: true },
+        })
+      : [];
+    const completedMap = new Map(completedCounts.map((c) => [c.initiativeId, c._count.id]));
+
     const withProgress = initiatives.map((init) => {
-      const total = init.actions.length;
-      const completed = init.actions.filter((a) => a.status === 'completed').length;
+      const total = init._count.actions;
+      const completed = completedMap.get(init.id) ?? 0;
       const computedProgress = total > 0 ? Math.round((completed / total) * 100) : init.progress;
-      return { ...init, progress: computedProgress, actionCount: total };
+      return { ...init, progress: computedProgress, actionCount: total, completedActionCount: completed };
     });
 
     return res.json({ initiatives: withProgress });
@@ -139,11 +151,13 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     const { ok, role } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
-    const PAGE = 25;
+    const PAGE = 50;
     // All initiative members see all actions; edit rights are controlled separately
     const memberFilter = {};
 
-    const [initiative, pending, actionsTotal] = await Promise.all([
+    const now = new Date();
+
+    const [initiative, pending, actionsTotal, completedCount, openCount, overdueCount] = await Promise.all([
       prisma.initiative.findUnique({
         where: { id: initiativeId },
         include: {
@@ -168,7 +182,10 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
         select: { id: true, email: true, role: true, department: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.action.count({ where: { initiativeId, ...memberFilter } }),
+      prisma.action.count({ where: { initiativeId } }),
+      prisma.action.count({ where: { initiativeId, status: 'completed' } }),
+      prisma.action.count({ where: { initiativeId, status: { notIn: ['completed'] } } }),
+      prisma.action.count({ where: { initiativeId, status: { notIn: ['completed'] }, dueDate: { lt: now } } }),
     ]);
 
     if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
@@ -177,8 +194,6 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     const actions = hasMore ? initiative.actions.slice(0, PAGE) : initiative.actions;
     const nextCursor = hasMore ? actions[actions.length - 1].id : null;
 
-    // Progress computed from full count
-    const completedCount = await prisma.action.count({ where: { initiativeId, status: 'completed' } });
     const computedProgress = actionsTotal > 0 ? Math.round((completedCount / actionsTotal) * 100) : initiative.progress;
 
     return res.json({
@@ -187,7 +202,10 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
         actions,
         progress: computedProgress,
         pending,
-        actionsMeta: { total: actionsTotal, hasMore, nextCursor },
+        actionsMeta: {
+          total: actionsTotal, hasMore, nextCursor,
+          open: openCount, overdue: overdueCount, completed: completedCount,
+        },
       },
     });
   } catch (err) {

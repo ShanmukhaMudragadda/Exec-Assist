@@ -102,6 +102,8 @@ export const actionsApi = {
     api.post(`/initiatives/${initiativeId}/actions/generate`, data),
   generateStandalone: (content: string) =>
     api.post('/actions/generate', { content }),
+  generateFromSheet: (content: string, initiativeId?: string) =>
+    api.post('/actions/generate-sheet', { content, ...(initiativeId ? { initiativeId } : {}) }),
   transcribeAudio: (audio: string, mimeType: string) =>
     api.post('/transcribe', { audio, mimeType }),
   update: (actionId: string, data: Partial<{

@@ -190,8 +190,8 @@ export default function InitiativesPage() {
                   const isRisk = init.status === 'at-risk'
                   const isOverdue = init.dueDate && isBefore(new Date(init.dueDate), now) && init.status !== 'completed'
                   const daysLeft = init.dueDate ? differenceInDays(new Date(init.dueDate), now) : null
-                  const totalA = init.actions?.length || init.actionCount || 0
-                  const doneA = init.actions?.filter((a) => a.status === 'completed').length || 0
+                  const totalA = (init as any).actionCount ?? init.actions?.length ?? 0
+                  const doneA = (init as any).completedActionCount ?? init.actions?.filter((a) => a.status === 'completed').length ?? 0
                   const openCount = totalA - doneA
                   const openA = (init.actions || []).filter((a) => a.status !== 'completed').slice(0, 3)
                   const barColor = isRisk ? '#dc2626' : init.status === 'completed' ? '#2563eb' : '#4648d4'

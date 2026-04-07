@@ -28,6 +28,7 @@ import {
   getCommandCenter,
   generateActionsFromTranscript,
   generateStandaloneActions,
+  generateActionsFromSheet,
   getExecutiveBrief,
   getAction,
   createActionUpdate,
@@ -69,7 +70,8 @@ router.delete('/initiatives/:initiativeId/tags/:tagId', authMiddleware, deleteTa
 // ── actions ─────────────────────────────────────────────────────────────────
 router.get('/initiatives/:initiativeId/actions', authMiddleware, listActions);
 router.post('/actions', authMiddleware, createAction);                           // standalone (no initiative)
-router.post('/actions/generate', authMiddleware, generateStandaloneActions);     // AI generate without initiative
+router.post('/actions/generate', authMiddleware, generateStandaloneActions);
+router.post('/actions/generate-sheet', authMiddleware, generateActionsFromSheet);
 router.post('/initiatives/:initiativeId/actions', authMiddleware, createAction);
 router.post('/initiatives/:initiativeId/actions/bulk', authMiddleware, bulkCreateActions);
 router.post('/initiatives/:initiativeId/actions/generate', authMiddleware, generateActionsFromTranscript);

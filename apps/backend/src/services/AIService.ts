@@ -15,6 +15,7 @@ export interface ExtractedTask {
   category?: string;
   tags: string[];
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  status?: 'todo' | 'in-progress' | 'in-review' | 'completed';
   dueDate?: string | null;
   assigneeIds: string[]; // user IDs from the provided member list
 }
@@ -167,36 +168,44 @@ ASSIGNMENT RULES:
 
   const prompt = `You are an expert project manager. Today's date is ${today}.
 
-Below is data extracted from a spreadsheet. The column names may vary — figure out which columns represent task title, description, priority, due date, assignee, category, tags, and status. Common column name patterns:
-- Title/task: "Task", "Title", "Name", "Item", "Action", "Task Name", "Action Item", "Description" (if it looks like a title)
-- Description: "Description", "Details", "Notes", "Summary", "Context"
-- Priority: "Priority", "Urgency", "Importance", "Severity"
+Below is data extracted from a spreadsheet. Your job is to understand each row as a task and return rich, complete task data — not just copy column values, but also INFER and GENERATE missing fields using context from the row.
+
+STEP 1 — MAP columns (case-insensitive, flexible naming):
+- Title: "Task", "Title", "Name", "Item", "Action", "Task Name", "Action Item"
+- Description: "Description", "Details", "Notes", "Summary", "Context", "Comments"
+- Priority: "Priority", "Urgency", "Importance", "Severity", "P0/P1/P2/P3"
 - Due date: "Due Date", "Deadline", "Target Date", "Due", "ETA", "Completion Date"
 - Assignee: "Assigned To", "Owner", "Responsible", "Assignee", "Person", "Who"
 - Status: "Status", "State", "Stage"
-- Category: "Category", "Type", "Area", "Domain", "Department"
-- Tags: "Tags", "Labels", "Keywords"
+- Tags: "Tags", "Labels", "Keywords", "Category", "Type", "Area"
 ${membersContext}
 
-PRIORITY INFERENCE:
-- "urgent" → critical, blocker, ASAP, P0, highest, show-stopper
-- "high" → high, important, P1, major, significant
-- "medium" → medium, normal, P2, moderate (default if blank)
-- "low" → low, minor, P3, nice-to-have, optional
+STEP 2 — GENERATE missing fields (same as you would from a transcript):
+- description: If no description column exists or the cell is empty, write 2-3 sentences describing what this task involves and why it matters, based on the title and any other cell values in the row. Never leave description empty.
+- tags: If no tags column exists or it is empty, generate 2-4 relevant tags based on the task title and description (e.g. "engineering", "design", "frontend", "urgent-fix", "client-facing", "documentation"). Always return at least 1 tag.
+- priority: If no priority column, infer from language in the title/description:
+  • "urgent" → critical, blocker, ASAP, P0, show-stopper
+  • "high" → important, P1, major, significant, this week
+  • "medium" → normal, P2, planned (default)
+  • "low" → nice-to-have, P3, minor, optional
 
-DUE DATE: Today is ${today}. Convert any date to YYYY-MM-DD. For relative dates, calculate from today.
+STEP 3 — DATE HANDLING:
+Convert any date value to YYYY-MM-DD. For relative expressions calculate from today (${today}). Return null if no date found.
 
-For each row that represents a task (skip header rows, blank rows, summary rows), return:
-- title (string, required)
-- description (string, optional)
+STEP 4 — STATUS MAPPING:
+Map to exactly one of: "todo" | "in-progress" | "in-review" | "completed". Default "todo" if unclear.
+
+For each data row (skip header, blank, and summary rows) return ALL of these fields:
+- title (string, required — concise action phrase)
+- description (string, required — generate if not in sheet)
 - priority: "urgent" | "high" | "medium" | "low"
-- status: "todo" | "in-progress" | "in-review" | "completed" (default "todo")
-- category (string, optional)
-- tags (string array)
+- status: "todo" | "in-progress" | "in-review" | "completed"
 - dueDate: YYYY-MM-DD or null
-- assigneeIds: string array of member IDs from the list above
+- assigneeIds: string array of member IDs (empty array [] if no match)
+- tags: string array — ALWAYS include at least 1 tag, generate from context if not in sheet
+- category (string, optional)
 
-Return ONLY a valid JSON array. No markdown, no explanation.
+Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
 
 Spreadsheet data:
 ---
@@ -223,6 +232,8 @@ JSON Array:`;
         tags: Array.isArray(task.tags) ? task.tags : [],
         priority: (['low', 'medium', 'high', 'urgent'].includes(task.priority)
           ? task.priority : 'medium') as ExtractedTask['priority'],
+        status: (['todo', 'in-progress', 'in-review', 'completed'].includes(task.status ?? '')
+          ? task.status : 'todo') as ExtractedTask['status'],
         dueDate: task.dueDate || null,
         assigneeIds: Array.isArray(task.assigneeIds)
           ? task.assigneeIds.filter((id) => typeof id === 'string' && validIds.has(id))
