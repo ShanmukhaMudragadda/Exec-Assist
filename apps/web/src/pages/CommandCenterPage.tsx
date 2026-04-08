@@ -21,7 +21,7 @@ interface Action {
   initiative?: { id: string; title: string; status: string } | null
   initiativeId?: string | null
 }
-interface Member { userId: string; role: string; department?: string | null; user: { id: string; name: string; email: string; avatar?: string | null } }
+interface Member { userId: string; role: string; department?: string | null; user: { id: string; name: string; email: string; avatar?: string | null; emailVerified?: boolean } }
 interface Initiative {
   id: string; title: string; description?: string | null; status: string; priority: string
   progress: number; dueDate?: string | null
@@ -1742,11 +1742,14 @@ export default function CommandCenterPage() {
                             <div className="flex items-center gap-3 group/member">
                               <Avatar name={m.user?.name} avatar={m.user?.avatar} size="sm" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-[13px] font-semibold text-[#111827] truncate">{m.user?.name}</p>
-                                {m.user?.email && <p className="text-[12px] text-[#9ca3af] truncate">{m.user.email}</p>}
+                                <p className="text-[13px] font-semibold text-[#111827] truncate">{m.user?.emailVerified === false ? m.user.email : m.user?.name}</p>
+                                {m.user?.emailVerified !== false && m.user?.email && <p className="text-[12px] text-[#9ca3af] truncate">{m.user.email}</p>}
                                 {m.department && !isEditing && <p className="text-[11px] text-[#9ca3af] mt-0.5">{m.department}</p>}
                               </div>
                               <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', m.role === 'owner' ? 'bg-[#ede9fe] text-[#4648d4]' : m.role === 'admin' ? 'bg-[#eff6ff] text-[#2563eb]' : 'bg-[#f3f4f6] text-[#6b7280]')}>{m.role}</span>
+                              {m.user?.emailVerified === false && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#fef9c3] text-[#a16207]">Not signed in</span>
+                              )}
                               {canEdit && !isEditing && (
                                 <button onClick={() => { setEditingMemberId(m.userId); setEditMemberRole(m.role as 'member' | 'admin'); setEditMemberDepartment(m.department || '') }}
                                   className="opacity-0 group-hover/member:opacity-100 text-[#9ca3af] hover:text-[#4648d4] transition-all p-1 rounded"
@@ -1792,18 +1795,7 @@ export default function CommandCenterPage() {
                         )
                       })
                     })()}
-                    {(initiative.pending ?? []).map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 opacity-60">
-                        <div className="w-7 h-7 rounded-full border-2 border-dashed border-[#d1d5db] flex items-center justify-center shrink-0">
-                          <span className="material-symbols-outlined text-[15px] text-[#9ca3af]">person</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold text-[#111827] truncate">{p.email}</p>
-                          <p className="text-[11px] text-[#9ca3af]">Hasn't signed in yet</p>
-                        </div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#fef9c3] text-[#a16207]">Invited</span>
-                      </div>
-                    ))}
+                    {/* stub users (added but haven't signed in yet) show a subtle badge */}
                   </div>
                   {isOwnerOrAdmin && (
                     <div className="px-4 py-3.5" style={{ borderTop: '1px solid #f3f4f6' }}>

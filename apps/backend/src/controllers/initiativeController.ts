@@ -162,7 +162,7 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
         where: { id: initiativeId },
         include: {
           creator: { select: { id: true, name: true, avatar: true } },
-          members: { include: { user: { select: { id: true, name: true, email: true, avatar: true } } } },
+          members: { include: { user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } } } },
           settings: true,
           tags: true,
           actions: {
@@ -407,18 +407,11 @@ export const listMembers = async (req: AuthRequest, res: Response) => {
     const { ok } = await canAccess(userId, initiativeId);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
-    const [members, pending] = await Promise.all([
-      prisma.initiativeMember.findMany({
-        where: { initiativeId },
-        include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
-      }),
-      prisma.initiativeInvitation.findMany({
-        where: { initiativeId, status: 'pending' },
-        select: { id: true, email: true, role: true, department: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
-    return res.json({ members, pending });
+    const members = await prisma.initiativeMember.findMany({
+      where: { initiativeId },
+      include: { user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } } },
+    });
+    return res.json({ members, pending: [] });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -535,60 +528,38 @@ export const addMember = async (req: AuthRequest, res: Response) => {
     const inviter = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
     const inviterName = inviter?.name || 'A teammate';
 
-    if (existingUser) {
-      // Directly add as member
-      const member = await (prisma.initiativeMember as any).upsert({
-        where: { userId_initiativeId: { userId: existingUser.id, initiativeId } },
-        update: { role: data.role ?? 'member', department: data.department ?? null },
-        create: { userId: existingUser.id, initiativeId, role: data.role ?? 'member', department: data.department ?? null },
-        include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
-      });
-
-      sendMemberAddedEmail(data.email, initiativeTitle, inviterName, initiativeId)
-        .catch((err: unknown) => console.error('Member added email failed:', err));
-
-      // Push notification to the added user
-      if (existingUser.pushNotificationsEnabled) {
-        sendPushNotification(existingUser.id, {
-          title: 'Added to Initiative',
-          body: `${inviterName} added you to "${initiativeTitle}"`,
-          url: `/initiatives/${initiativeId}`,
-          tag: `member-added-${initiativeId}`,
-        }).catch((err) => console.error('[push] member added push failed:', err));
-      }
-
-      logAudit({
-        userId,
-        action: 'initiative.member_added',
-        entityType: 'initiative',
-        entityId: initiativeId,
-        entityTitle: initiativeTitle,
-        metadata: { email: data.email, role: data.role },
-        req,
-      });
-
-      return res.status(201).json({ member, pending: null });
-    }
-
-    // User doesn't have an account yet — create or update pending invitation
-    const existingInvite = await prisma.initiativeInvitation.findFirst({
-      where: { email: data.email, initiativeId, status: 'pending' },
+    // If user doesn't have an account yet, create a stub user so they can be
+    // added directly (no invitation/acceptance required). When they sign in with
+    // Google the auth flow will update the stub with their real name/avatar.
+    const targetUser = existingUser ?? await prisma.user.upsert({
+      where: { email: data.email },
+      update: {},   // already exists as stub — don't overwrite anything
+      create: {
+        email: data.email,
+        name: data.email.split('@')[0],   // placeholder name until they log in
+        emailVerified: false,
+      },
     });
 
-    let pending;
-    if (existingInvite) {
-      pending = await prisma.initiativeInvitation.update({
-        where: { id: existingInvite.id },
-        data: { role: data.role ?? 'member', department: data.department ?? null, invitedBy: userId },
-      });
-    } else {
-      pending = await (prisma.initiativeInvitation as any).create({
-        data: { email: data.email, initiativeId, invitedBy: userId, role: data.role ?? 'member', department: data.department ?? null },
-      });
-    }
+    const member = await (prisma.initiativeMember as any).upsert({
+      where: { userId_initiativeId: { userId: targetUser.id, initiativeId } },
+      update: { role: data.role ?? 'member', department: data.department ?? null },
+      create: { userId: targetUser.id, initiativeId, role: data.role ?? 'member', department: data.department ?? null },
+      include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
+    });
 
     sendMemberAddedEmail(data.email, initiativeTitle, inviterName, initiativeId)
       .catch((err: unknown) => console.error('Member added email failed:', err));
+
+    // Push notification only if they have an active account with push enabled
+    if (existingUser?.pushNotificationsEnabled) {
+      sendPushNotification(existingUser.id, {
+        title: 'Added to Initiative',
+        body: `${inviterName} added you to "${initiativeTitle}"`,
+        url: `/initiatives/${initiativeId}`,
+        tag: `member-added-${initiativeId}`,
+      }).catch((err) => console.error('[push] member added push failed:', err));
+    }
 
     logAudit({
       userId,
@@ -596,11 +567,11 @@ export const addMember = async (req: AuthRequest, res: Response) => {
       entityType: 'initiative',
       entityId: initiativeId,
       entityTitle: initiativeTitle,
-      metadata: { email: data.email, role: data.role, pending: true },
+      metadata: { email: data.email, role: data.role, stubUser: !existingUser },
       req,
     });
 
-    return res.status(201).json({ member: null, pending: { id: pending.id, email: pending.email, role: pending.role, department: pending.department, createdAt: pending.createdAt } });
+    return res.status(201).json({ member, pending: null });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
     console.error(err);
