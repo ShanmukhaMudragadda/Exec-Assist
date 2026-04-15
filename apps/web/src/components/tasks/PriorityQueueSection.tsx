@@ -54,7 +54,8 @@ export function PriorityQueueSection({ allActions, getActionPath }: PriorityQueu
             {priorityFeed.map((action) => {
               const isOD = action.dueDate && isBefore(new Date(action.dueDate), now) && action.status !== 'completed'
               const isDueToday = action.dueDate && isToday(new Date(action.dueDate)) && action.status !== 'completed'
-              const person = action.assignee || action.creator
+              const firstAssignee = action.assignees?.[0]?.user ?? null
+              const person = firstAssignee || action.creator
               const initials = person?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?'
 
               return (
@@ -77,9 +78,9 @@ export function PriorityQueueSection({ allActions, getActionPath }: PriorityQueu
                       {action.dueDate && !isOD && !isDueToday && `Due ${format(new Date(action.dueDate), 'MMM d')}`}
                     </p>
                   </div>
-                  {action.assignee && (
-                    action.assignee.avatar ? (
-                      <img src={action.assignee.avatar} alt={action.assignee.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                  {firstAssignee && (
+                    firstAssignee.avatar ? (
+                      <img src={firstAssignee.avatar} alt={firstAssignee.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
                     ) : (
                       <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#4648d4] text-[10px] font-bold flex items-center justify-center shrink-0">
                         {initials}

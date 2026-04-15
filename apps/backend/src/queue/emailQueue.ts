@@ -120,22 +120,30 @@ export const scheduleDailyReports = (): void => {
         where: {
           dueDate: { gte: start, lte: end },
           status: { not: 'completed' },
-          assigneeId: { not: null },
-          assignee: { pushNotificationsEnabled: true },
+          assignees: { some: {} },
         },
-        select: { id: true, title: true, initiativeId: true, assigneeId: true },
+        select: {
+          id: true,
+          title: true,
+          initiativeId: true,
+          assignees: {
+            where: { user: { pushNotificationsEnabled: true } },
+            select: { userId: true },
+          },
+        },
       });
 
       for (const action of dueTomorrow) {
-        if (!action.assigneeId) continue;
-        await sendPushNotification(action.assigneeId, {
-          title: 'Due Tomorrow',
-          body: action.title,
-          url: action.initiativeId
-            ? `/initiatives/${action.initiativeId}`
-            : '/command-center',
-          tag: `due-tomorrow-${action.id}`,
-        });
+        for (const assigneeRecord of action.assignees) {
+          await sendPushNotification(assigneeRecord.userId, {
+            title: 'Due Tomorrow',
+            body: action.title,
+            url: action.initiativeId
+              ? `/initiatives/${action.initiativeId}`
+              : '/command-center',
+            tag: `due-tomorrow-${action.id}`,
+          });
+        }
       }
     } catch (err) {
       console.error('[cron] Due-date reminder push failed:', err);
@@ -154,7 +162,7 @@ export const sendInitiativeDailyDigest = async (initiativeId: string): Promise<v
           include: {
             creator: { select: { timezone: true } },
             actions: {
-              include: { assignee: { select: { name: true } } },
+              include: { assignees: { include: { user: { select: { name: true } } } } },
             },
           },
         },
@@ -200,7 +208,7 @@ export const sendInitiativeDailyDigest = async (initiativeId: string): Promise<v
         title: a.title,
         status: a.status,
         priority: a.priority,
-        assigneeName: a.assignee?.name || null,
+        assigneeName: (a as any).assignees?.[0]?.user?.name || null,
         dueDate: a.dueDate ? new Date(a.dueDate).toISOString().split('T')[0] : null,
         isOverdue: !!a.dueDate && new Date(a.dueDate) < now && a.status !== 'completed',
         daysSinceUpdate,

@@ -230,7 +230,9 @@ export default function ActionDetailPage() {
     ? (initiative.creator?.id === user?.id ? 'owner' : (members.find((m: any) => m.userId === user?.id)?.role ?? 'member'))
     : 'owner'
   const isOwnerOrAdmin = userMemberRole === 'owner' || userMemberRole === 'admin'
-  const canEdit = isOwnerOrAdmin || action.createdBy === user?.id || action.assignee?.id === user?.id
+  const currentAssignees: { id: string; name: string; avatar?: string | null }[] =
+    action.assignees?.map((a: any) => a.user ?? a) || []
+  const canEdit = isOwnerOrAdmin || action.createdBy === user?.id || currentAssignees.some((a) => a.id === user?.id)
 
   // All assignable people
   const allAssignees = initiative ? [
@@ -238,7 +240,7 @@ export default function ActionDetailPage() {
     ...members.filter((m: any) => m.userId !== initiative.creator.id).map((m: any) => ({
       id: m.userId, name: m.user?.name, avatar: m.user?.avatar || null, role: m.role, dept: m.department || '',
     })),
-  ] : action.assignee ? [{ id: action.assignee.id, name: action.assignee.name, avatar: action.assignee.avatar, role: '', dept: '' }] : []
+  ] : currentAssignees.map((a) => ({ id: a.id, name: a.name, avatar: a.avatar || null, role: '', dept: '' }))
 
   return (
     <AppLayout>
@@ -640,42 +642,63 @@ export default function ActionDetailPage() {
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
               <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-3.5">People</p>
               <div className="space-y-1">
-                {/* Assignee — clickable picker */}
-                <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #f9fafb' }}>
-                  <span className="text-[13px] text-[#6b7280]">Assignee</span>
-                  <div className="relative" ref={assigneeRef}>
-                    <button
-                      onClick={() => canEdit && setShowAssigneeDropdown((v) => !v)}
-                      disabled={!canEdit}
-                      className={cn('flex items-center gap-1.5 text-[13px] font-medium text-[#111827] transition-colors', canEdit && 'hover:text-[#4648d4]', !canEdit && 'cursor-default')}
-                    >
-                      {action.assignee ? (
-                        <>
-                          <Avatar name={action.assignee.name} avatar={action.assignee.avatar} size="xs" />
-                          {action.assignee.name}
-                        </>
-                      ) : (
-                        <span className="text-[#9ca3af]">Unassigned</span>
-                      )}
-                      <span className="material-symbols-outlined text-[14px] text-[#d1d5db]">expand_more</span>
-                    </button>
-                    {showAssigneeDropdown && (
-                      <div className="absolute top-full right-0 mt-1 bg-white border border-[#e5e7eb] rounded-xl shadow-xl z-50 min-w-[180px] py-1 overflow-hidden">
-                        <button onClick={() => { handleUpdate({ assigneeId: null }); setShowAssigneeDropdown(false) }}
-                          className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb] transition-colors', !action.assignee ? 'text-[#4648d4] font-semibold' : 'text-[#9ca3af]')}
-                        >
-                          <div className="w-5 h-5 rounded-full border-2 border-dashed border-[#d1d5db] shrink-0" />
-                          Unassigned
-                        </button>
-                        {allAssignees.map((a: any) => (
-                          <button key={a.id} onClick={() => { handleUpdate({ assigneeId: a.id }); setShowAssigneeDropdown(false) }}
-                            className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb] transition-colors', action.assignee?.id === a.id ? 'bg-[#f5f3ff]' : '')}
-                          >
+                {/* Assignees — multi-select picker */}
+                <div className="py-2" style={{ borderBottom: '1px solid #f9fafb' }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[13px] text-[#6b7280]">Assignees</span>
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowAssigneeDropdown((v) => !v)}
+                        className="flex items-center gap-0.5 text-[11px] font-semibold text-[#9ca3af] hover:text-[#4648d4] transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">edit</span>
+                      </button>
+                    )}
+                  </div>
+                  <div ref={assigneeRef} className="relative">
+                    {currentAssignees.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {currentAssignees.map((a) => (
+                          <div key={a.id} className="flex items-center gap-2">
                             <Avatar name={a.name} avatar={a.avatar} size="xs" />
-                            <span className={cn('flex-1 text-left', action.assignee?.id === a.id ? 'text-[#4648d4] font-semibold' : 'text-[#374151]')}>{a.name}</span>
-                            {a.dept && <span className="text-[11px] text-[#9ca3af] shrink-0">{a.dept}</span>}
-                          </button>
+                            <span className="text-[13px] font-medium text-[#111827]">{a.name}</span>
+                            {canEdit && (
+                              <button
+                                onClick={() => {
+                                  const newIds = currentAssignees.filter((x) => x.id !== a.id).map((x) => x.id)
+                                  handleUpdate({ assigneeIds: newIds })
+                                }}
+                                className="ml-auto text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none transition-colors"
+                                title="Remove assignee"
+                              >×</button>
+                            )}
+                          </div>
                         ))}
+                      </div>
+                    ) : (
+                      <span className="text-[13px] text-[#9ca3af]">Unassigned</span>
+                    )}
+                    {showAssigneeDropdown && (
+                      <div className="absolute top-full right-0 mt-1 bg-white border border-[#e5e7eb] rounded-xl shadow-xl z-50 min-w-[200px] py-1 overflow-hidden">
+                        <div className="px-3 py-1.5 text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">Click to toggle assignees</div>
+                        {allAssignees.map((a: any) => {
+                          const isAssigned = currentAssignees.some((x) => x.id === a.id)
+                          return (
+                            <button key={a.id} onClick={() => {
+                              const newIds = isAssigned
+                                ? currentAssignees.filter((x) => x.id !== a.id).map((x) => x.id)
+                                : [...currentAssignees.map((x) => x.id), a.id]
+                              handleUpdate({ assigneeIds: newIds })
+                            }}
+                              className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb] transition-colors', isAssigned ? 'bg-[#f5f3ff]' : '')}
+                            >
+                              <Avatar name={a.name} avatar={a.avatar} size="xs" />
+                              <span className={cn('flex-1 text-left', isAssigned ? 'text-[#4648d4] font-semibold' : 'text-[#374151]')}>{a.name}</span>
+                              {isAssigned && <span className="material-symbols-outlined text-[14px] text-[#4648d4]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                              {a.dept && !isAssigned && <span className="text-[11px] text-[#9ca3af] shrink-0">{a.dept}</span>}
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

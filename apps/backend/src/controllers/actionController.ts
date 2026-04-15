@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { any, z } from 'zod';
+import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { AuthRequest } from '../middleware/auth';
 import { sendMentionNotificationEmail } from '../services/emailService';
@@ -61,8 +61,14 @@ function canEdit(role: string | null) {
 }
 
 // For actions that may have no initiative (standalone), check access at action level
-async function canAccessAction(userId: string, action: { initiativeId: string | null; createdBy: string; assigneeId: string | null }): Promise<{ ok: boolean; canModify: boolean; role: string | null }> {
-  const isOwnerOrAssignee = action.createdBy === userId || action.assigneeId === userId;
+async function canAccessAction(
+  userId: string,
+  action: { initiativeId: string | null; createdBy: string; assignees?: { userId: string }[] }
+): Promise<{ ok: boolean; canModify: boolean; role: string | null }> {
+  const isCreator = action.createdBy === userId;
+  const isAssignee = action.assignees?.some((a) => a.userId === userId) ?? false;
+  const isOwnerOrAssignee = isCreator || isAssignee;
+
   if (!action.initiativeId) {
     return { ok: isOwnerOrAssignee, canModify: isOwnerOrAssignee, role: null };
   }
@@ -72,8 +78,14 @@ async function canAccessAction(userId: string, action: { initiativeId: string | 
   return { ok: true, canModify: canEdit(role) || isOwnerOrAssignee, role };
 }
 
+const ASSIGNEES_INCLUDE = {
+  assignees: {
+    include: { user: { select: { id: true, name: true, avatar: true } } },
+  },
+} as const;
+
 const ACTION_INCLUDE = {
-  assignee: { select: { id: true, name: true, avatar: true } },
+  ...ASSIGNEES_INCLUDE,
   creator: { select: { id: true, name: true, avatar: true } },
   tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
 } as const;
@@ -82,7 +94,7 @@ const createSchema = z.object({
   initiativeId: z.string().optional().nullable(),
   title: z.string().min(1),
   description: z.string().optional().nullable(),
-  assigneeId: z.string().optional().nullable(),
+  assigneeIds: z.array(z.string()).optional().default([]),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().default('medium'),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional().default('todo'),
   dueDate: z.string().optional().nullable(),
@@ -95,7 +107,7 @@ const updateSchema = z.object({
   initiativeId: z.string().optional().nullable(),
   title: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
-  assigneeId: z.string().optional().nullable(),
+  assigneeIds: z.array(z.string()).optional().nullable(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
   dueDate: z.string().optional().nullable(),
@@ -106,7 +118,7 @@ const bulkCreateItemSchema = z.object({
   initiativeId: z.string().optional().nullable(),
   title: z.string().min(1),
   description: z.string().optional().nullable(),
-  assigneeId: z.string().optional().nullable(),
+  assigneeIds: z.array(z.string()).optional().default([]),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().default('medium'),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional().default('todo'),
   dueDate: z.string().optional().nullable(),
@@ -122,7 +134,7 @@ const bulkUpdateSchema = z.object({
   update: z.object({
     status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-    assigneeId: z.string().optional().nullable(),
+    assigneeIds: z.array(z.string()).optional().nullable(),
     dueDate: z.string().optional().nullable(),
     initiativeId: z.string().optional().nullable(),
   }),
@@ -148,7 +160,6 @@ export const createAction = async (req: AuthRequest, res: Response) => {
       data: {
         initiativeId: initiativeId ?? null,
         createdBy: userId,
-        assigneeId: data.assigneeId ?? null,
         title: data.title,
         description: data.description ?? null,
         priority: data.priority ?? 'medium',
@@ -156,6 +167,9 @@ export const createAction = async (req: AuthRequest, res: Response) => {
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         sourceType: data.sourceType ?? 'manual',
         sourceId: data.sourceId ?? null,
+        assignees: data.assigneeIds?.length
+          ? { create: data.assigneeIds.map((uid) => ({ userId: uid })) }
+          : undefined,
         tags: data.tagIds?.length
           ? { create: data.tagIds.map((tagId) => ({ tagId })) }
           : undefined,
@@ -163,16 +177,17 @@ export const createAction = async (req: AuthRequest, res: Response) => {
       include: ACTION_INCLUDE,
     });
 
-    // Notify assignee via email + push (skip if self-assigned)
-    if (action.assigneeId && action.assigneeId !== userId) {
-      const assignee = await prisma.user.findUnique({
-        where: { id: action.assigneeId },
-        select: { email: true, name: true, pushNotificationsEnabled: true },
+    // Notify each new assignee (skip if self-assigned)
+    const newAssigneeIds = (data.assigneeIds ?? []).filter((id) => id !== userId);
+    if (newAssigneeIds.length) {
+      const assignees = await prisma.user.findMany({
+        where: { id: { in: newAssigneeIds } },
+        select: { id: true, email: true, name: true, pushNotificationsEnabled: true },
       });
-      if (assignee) {
+      for (const assignee of assignees) {
         queueActionAssignmentEmail(assignee.email, assignee.name, action.title, action.id, action.initiativeId ?? '');
         if (assignee.pushNotificationsEnabled) {
-          sendPushNotification(action.assigneeId, {
+          sendPushNotification(assignee.id, {
             title: 'New Action Assigned',
             body: action.title,
             url: action.initiativeId ? `/initiatives/${action.initiativeId}` : '/command-center',
@@ -241,7 +256,6 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
           data: {
             initiativeId,
             createdBy: userId,
-            assigneeId: item.assigneeId ?? null,
             title: item.title,
             description: item.description ?? null,
             priority: item.priority ?? 'medium',
@@ -249,6 +263,9 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
             dueDate: item.dueDate ? new Date(item.dueDate) : null,
             sourceType: item.sourceType ?? 'ai',
             sourceId: item.sourceId ?? null,
+            assignees: item.assigneeIds?.length
+              ? { create: item.assigneeIds.map((uid) => ({ userId: uid })) }
+              : undefined,
             tags: finalTagIds.length
               ? { create: finalTagIds.map((tagId) => ({ tagId })) }
               : undefined,
@@ -261,9 +278,12 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
     // Notify each unique assignee of their newly assigned actions (skip self-assigned)
     const assigneeGroups = new Map<string, string[]>();
     for (const a of created) {
-      if (a.assigneeId && a.assigneeId !== userId) {
-        if (!assigneeGroups.has(a.assigneeId)) assigneeGroups.set(a.assigneeId, []);
-        assigneeGroups.get(a.assigneeId)!.push(a.title);
+      for (const assigneeRecord of a.assignees) {
+        const aid = (assigneeRecord as any).user?.id ?? (assigneeRecord as any).userId;
+        if (aid && aid !== userId) {
+          if (!assigneeGroups.has(aid)) assigneeGroups.set(aid, []);
+          assigneeGroups.get(aid)!.push(a.title);
+        }
       }
     }
     if (assigneeGroups.size) {
@@ -307,7 +327,7 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
     // Verify user has access to all requested actions
     const actions = await prisma.action.findMany({
       where: { id: { in: actionIds } },
-      select: { id: true, assigneeId: true, createdBy: true, initiativeId: true },
+      select: { id: true, createdBy: true, initiativeId: true, assignees: { select: { userId: true } } },
     });
 
     const userInitiatives = await prisma.initiative.findMany({
@@ -317,7 +337,12 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
     const initiativeIds = new Set(userInitiatives.map((i) => i.id));
 
     const accessibleIds = actions
-      .filter((a) => a.assigneeId === userId || a.createdBy === userId || (a.initiativeId && initiativeIds.has(a.initiativeId)))
+      .filter(
+        (a) =>
+          a.assignees.some((aa) => aa.userId === userId) ||
+          a.createdBy === userId ||
+          (a.initiativeId && initiativeIds.has(a.initiativeId))
+      )
       .map((a) => a.id);
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
@@ -331,11 +356,28 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
     const updateData: Record<string, unknown> = {};
     if (update.status !== undefined) updateData.status = update.status;
     if (update.priority !== undefined) updateData.priority = update.priority;
-    if ('assigneeId' in update) updateData.assigneeId = update.assigneeId;
     if ('dueDate' in update) updateData.dueDate = update.dueDate ? new Date(update.dueDate) : null;
     if ('initiativeId' in update) updateData.initiativeId = update.initiativeId ?? null;
 
-    await prisma.action.updateMany({ where: { id: { in: accessibleIds } }, data: updateData });
+    // Handle assigneeIds: replace assignees for all accessible actions
+    if ('assigneeIds' in update) {
+      const newAssigneeIds = update.assigneeIds ?? [];
+      await prisma.$transaction([
+        prisma.action.updateMany({ where: { id: { in: accessibleIds } }, data: updateData }),
+        // Delete existing assignees for all accessible actions
+        (prisma.actionAssignee as any).deleteMany({ where: { actionId: { in: accessibleIds } } }),
+        // Insert new assignees if provided
+        ...(newAssigneeIds.length
+          ? accessibleIds.flatMap((actionId) =>
+              newAssigneeIds.map((uid) =>
+                (prisma.actionAssignee as any).create({ data: { actionId, userId: uid } })
+              )
+            )
+          : []),
+      ]);
+    } else {
+      await prisma.action.updateMany({ where: { id: { in: accessibleIds } }, data: updateData });
+    }
 
     logAudit({
       userId,
@@ -360,7 +402,7 @@ export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
 
     const actions = await prisma.action.findMany({
       where: { id: { in: actionIds } },
-      select: { id: true, assigneeId: true, createdBy: true, initiativeId: true },
+      select: { id: true, createdBy: true, initiativeId: true, assignees: { select: { userId: true } } },
     });
 
     const userInitiatives = await prisma.initiative.findMany({
@@ -370,7 +412,12 @@ export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
     const initiativeIds = new Set(userInitiatives.map((i) => i.id));
 
     const accessibleIds = actions
-      .filter((a) => a.assigneeId === userId || a.createdBy === userId || (a.initiativeId && initiativeIds.has(a.initiativeId)))
+      .filter(
+        (a) =>
+          a.assignees.some((aa) => aa.userId === userId) ||
+          a.createdBy === userId ||
+          (a.initiativeId && initiativeIds.has(a.initiativeId))
+      )
       .map((a) => a.id);
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
@@ -399,9 +446,12 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = updateSchema.parse(req.body);
 
-    const action = await prisma.action.findUnique({ where: { id: actionId } });
+    const action = await prisma.action.findUnique({
+      where: { id: actionId },
+      include: { assignees: { select: { userId: true } } },
+    });
     if (!action) return res.status(404).json({ error: 'Action not found' });
-    const previousAssigneeId = action.assigneeId;
+    const previousAssigneeIds = action.assignees.map((a) => a.userId);
 
     const { ok, canModify } = await canAccessAction(userId, action);
     if (!ok || !canModify) {
@@ -415,54 +465,71 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // Build the scalar update data
+    const scalarUpdate: Record<string, unknown> = {
+      ...(data.initiativeId !== undefined && { initiativeId: data.initiativeId ?? null }),
+      ...(data.title !== undefined && { title: data.title }),
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.status !== undefined && { status: data.status }),
+      ...(data.priority !== undefined && { priority: data.priority }),
+      ...(data.dueDate !== undefined && { dueDate: data.dueDate ? new Date(data.dueDate) : null }),
+      ...(data.tagIds !== undefined && {
+        tags: {
+          deleteMany: {},
+          create: data.tagIds.map((tagId) => ({ tagId })),
+        },
+      }),
+    };
+
+    // Handle assigneeIds replacement
+    if (data.assigneeIds !== undefined && data.assigneeIds !== null) {
+      scalarUpdate.assignees = {
+        deleteMany: {},
+        create: data.assigneeIds.map((uid) => ({ userId: uid })),
+      };
+    }
+
     const updated = await prisma.action.update({
       where: { id: actionId },
-      data: {
-        ...(data.initiativeId !== undefined && { initiativeId: data.initiativeId ?? null }),
-        ...(data.title !== undefined && { title: data.title }),
-        ...(data.description !== undefined && { description: data.description }),
-        ...(data.status !== undefined && { status: data.status }),
-        ...(data.priority !== undefined && { priority: data.priority }),
-        ...(data.assigneeId !== undefined && { assigneeId: data.assigneeId }),
-        ...(data.dueDate !== undefined && { dueDate: data.dueDate ? new Date(data.dueDate) : null }),
-        ...(data.tagIds !== undefined && {
-          tags: {
-            deleteMany: {},
-            create: data.tagIds.map((tagId) => ({ tagId })),
-          },
-        }),
-      },
+      data: scalarUpdate,
       include: ACTION_INCLUDE,
     });
 
-    // Notify new assignee if reassigned (skip if self-assigned)
-    const newAssigneeId = updated.assigneeId;
-    if (newAssigneeId && newAssigneeId !== previousAssigneeId && newAssigneeId !== userId) {
-      const assignee = await prisma.user.findUnique({
-        where: { id: newAssigneeId },
-        select: { email: true, name: true, pushNotificationsEnabled: true },
-      });
-      if (assignee) {
-        queueActionAssignmentEmail(assignee.email, assignee.name, updated.title, updated.id, updated.initiativeId ?? '');
-        if (assignee.pushNotificationsEnabled) {
-          sendPushNotification(newAssigneeId, {
-            title: 'New Action Assigned',
-            body: updated.title,
-            url: updated.initiativeId ? `/initiatives/${updated.initiativeId}` : '/command-center',
-            tag: `action-assigned-${updated.id}`,
-          }).catch((err) => console.error('[push] reassign push failed:', err));
+    // Notify newly added assignees (skip if self-assigned or was already assigned)
+    if (data.assigneeIds !== undefined && data.assigneeIds !== null) {
+      const prevSet = new Set(previousAssigneeIds);
+      const newAssigneeIds = data.assigneeIds.filter((id) => !prevSet.has(id) && id !== userId);
+      if (newAssigneeIds.length) {
+        const assignees = await prisma.user.findMany({
+          where: { id: { in: newAssigneeIds } },
+          select: { id: true, email: true, name: true, pushNotificationsEnabled: true },
+        });
+        for (const assignee of assignees) {
+          queueActionAssignmentEmail(assignee.email, assignee.name, updated.title, updated.id, updated.initiativeId ?? '');
+          if (assignee.pushNotificationsEnabled) {
+            sendPushNotification(assignee.id, {
+              title: 'New Action Assigned',
+              body: updated.title,
+              url: updated.initiativeId ? `/initiatives/${updated.initiativeId}` : '/command-center',
+              tag: `action-assigned-${updated.id}`,
+            }).catch((err) => console.error('[push] reassign push failed:', err));
+          }
         }
       }
     }
 
-    // Notify creator and assignee on status change (skip the person making the change)
+    // Notify creator and all assignees on status change (skip the person making the change)
     if (data.status && data.status !== action.status) {
       const statusLabel: Record<string, string> = {
         'todo': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', 'completed': 'Completed',
       };
       const notifyIds = new Set<string>();
       if (updated.createdBy !== userId) notifyIds.add(updated.createdBy);
-      if (updated.assigneeId && updated.assigneeId !== userId) notifyIds.add(updated.assigneeId);
+      // Notify all current assignees
+      for (const assigneeRecord of updated.assignees) {
+        const aid = (assigneeRecord as any).userId ?? (assigneeRecord as any).user?.id;
+        if (aid && aid !== userId) notifyIds.add(aid);
+      }
       if (notifyIds.size) {
         prisma.user
           .findMany({ where: { id: { in: [...notifyIds] }, pushNotificationsEnabled: true }, select: { id: true } })
@@ -503,7 +570,10 @@ export const deleteAction = async (req: AuthRequest, res: Response) => {
     const { actionId } = req.params;
     const userId = req.user!.id;
 
-    const action = await prisma.action.findUnique({ where: { id: actionId } });
+    const action = await prisma.action.findUnique({
+      where: { id: actionId },
+      include: { assignees: { select: { userId: true } } },
+    });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
     if (action.initiativeId) {
@@ -563,7 +633,7 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
 
     const accessCondition = {
       OR: [
-        { assigneeId: userId },
+        { assignees: { some: { userId } } },
         { createdBy: userId },
         ...(initiativeIds.length ? [{ initiativeId: { in: initiativeIds } }] : []),
       ],
@@ -592,7 +662,7 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
         { description: { contains: search, mode: 'insensitive' as const } },
-        { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
+        { assignees: { some: { user: { name: { contains: search, mode: 'insensitive' as const } } } } },
         { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
         ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
         ...(matchingActionNumber ? [{ actionNumber: matchingActionNumber }] : []),
@@ -616,7 +686,7 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
         include: {
           initiative: { select: { id: true, title: true, status: true } },
           creator: { select: { id: true, name: true, avatar: true } },
-          assignee: { select: { id: true, name: true, avatar: true } },
+          assignees: { include: { user: { select: { id: true, name: true, avatar: true } } } },
           tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
         },
         orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
@@ -697,7 +767,7 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
         description: t.description ?? null,
         priority: t.priority,
         dueDate,
-        assigneeId: t.assigneeIds[0] ?? null,
+        assigneeIds: t.assigneeIds ?? [],
         sourceType: 'transcript',
         tags: t.tags,
       };
@@ -746,7 +816,7 @@ export const getExecutiveBrief = async (req: AuthRequest, res: Response) => {
       where: {
         OR: [
           { createdBy: userId },
-          { assigneeId: userId },
+          { assignees: { some: { userId } } },
           ...(userInitiatives.length ? [{ initiativeId: { in: userInitiatives.map((i) => i.id) } }] : []),
         ],
       },
@@ -866,7 +936,7 @@ export const generateActionsFromSheet = async (req: AuthRequest, res: Response) 
         priority: t.priority,
         status: t.status ?? 'todo',
         dueDate,
-        assigneeId: t.assigneeIds?.[0] ?? null,
+        assigneeIds: t.assigneeIds ?? [],
         tags: t.tags,
       };
     });
@@ -913,7 +983,7 @@ export const getAction = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
 
     const BASE_INCLUDE = {
-      assignee: { select: { id: true, name: true, avatar: true } },
+      assignees: { include: { user: { select: { id: true, name: true, avatar: true } } } },
       creator: { select: { id: true, name: true, avatar: true } },
       tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
       initiative: { select: { id: true, title: true, status: true } },
@@ -959,7 +1029,10 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
 
     if (!content?.trim()) return res.status(400).json({ error: 'Content is required' });
 
-    const action = await prisma.action.findUnique({ where: { id: actionId }, select: { initiativeId: true, createdBy: true, assigneeId: true } });
+    const action = await prisma.action.findUnique({
+      where: { id: actionId },
+      select: { initiativeId: true, createdBy: true, assignees: { select: { userId: true } } },
+    });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
     const { ok: canView } = await canAccessAction(userId, action);
@@ -982,10 +1055,12 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
         req,
       });
 
-      // Notify action creator and assignee about new comment (skip the commenter)
+      // Notify action creator and all assignees about new comment (skip the commenter)
       const notifyIds = new Set<string>();
       if (action.createdBy !== userId) notifyIds.add(action.createdBy);
-      if (action.assigneeId && action.assigneeId !== userId) notifyIds.add(action.assigneeId);
+      for (const assigneeRecord of action.assignees) {
+        if (assigneeRecord.userId !== userId) notifyIds.add(assigneeRecord.userId);
+      }
       if (notifyIds.size) {
         const poster = update.user as { name: string };
         prisma.user

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '@/store/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -18,9 +19,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    // 401 = no token / session gone; 403 with expired message = token expired
+    const isExpiredToken =
+      status === 401 ||
+      (status === 403 && error.response?.data?.error?.toLowerCase?.().includes('expired'))
+    if (isExpiredToken) {
+      // Clear both localStorage and Zustand state
       localStorage.removeItem('token')
-      window.location.href = '/auth/login'
+      useAuthStore.getState().logout()
+      if (!window.location.pathname.startsWith('/auth/login')) {
+        window.location.href = '/auth/login?reason=token_expired'
+      }
     }
     return Promise.reject(error)
   }
@@ -89,12 +99,12 @@ export const tagsApi = {
 export const actionsApi = {
   create: (initiativeId: string, data: {
     title: string; description?: string; priority?: string; status?: string;
-    dueDate?: string | null; assigneeId?: string | null;
+    dueDate?: string | null; assigneeIds?: string[];
     sourceType?: string; sourceId?: string; tagIds?: string[];
   }) => api.post(`/initiatives/${initiativeId}/actions`, data),
   createStandalone: (data: {
     title: string; description?: string; priority?: string; status?: string;
-    dueDate?: string | null; assigneeId?: string | null; tagIds?: string[];
+    dueDate?: string | null; assigneeIds?: string[]; tagIds?: string[];
   }) => api.post('/actions', data),
   bulkCreate: (initiativeId: string, actions: unknown[]) =>
     api.post(`/initiatives/${initiativeId}/actions/bulk`, { actions }),
@@ -108,11 +118,11 @@ export const actionsApi = {
     api.post('/transcribe', { audio, mimeType }),
   update: (actionId: string, data: Partial<{
     title: string; description: string | null; status: string; priority: string;
-    dueDate: string | null; assigneeId: string | null; tagIds: string[];
+    dueDate: string | null; assigneeIds: string[] | null; tagIds: string[];
     initiativeId: string | null;
   }>) => api.patch(`/actions/${actionId}`, data),
   delete: (actionId: string) => api.delete(`/actions/${actionId}`),
-  bulkUpdate: (actionIds: string[], update: { status?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null }) =>
+  bulkUpdate: (actionIds: string[], update: { status?: string; priority?: string; assigneeIds?: string[] | null; dueDate?: string | null }) =>
     api.patch('/actions/bulk', { actionIds, update }),
   bulkDelete: (actionIds: string[]) =>
     api.delete('/actions/bulk', { data: { actionIds } }),

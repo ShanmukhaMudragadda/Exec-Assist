@@ -268,7 +268,8 @@ export default function DashboardPage() {
                   {priorityFeed.map((action) => {
                     const isOD = action.dueDate && isBefore(new Date(action.dueDate), now) && action.status !== 'completed'
                     const dotColor = PRIORITY_COLOR[action.priority] || '#d1d5db'
-                    const assigneeInitials = action.assignee?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+                    const firstAssignee = action.assignees?.[0]?.user ?? null
+                    const assigneeInitials = firstAssignee?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
                     return (
                       <div
                         key={action.id}

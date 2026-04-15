@@ -107,7 +107,7 @@ export const listInitiatives = async (req: AuthRequest, res: Response) => {
         actions: {
           select: {
             id: true, title: true, status: true, priority: true, dueDate: true,
-            assignee: { select: { id: true, name: true, avatar: true } },
+            assignees: { include: { user: { select: { id: true, name: true, avatar: true } } } },
             creator: { select: { id: true, name: true, avatar: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -168,7 +168,7 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
           actions: {
             where: memberFilter,
             include: {
-              assignee: { select: { id: true, name: true, avatar: true } },
+              assignees: { include: { user: { select: { id: true, name: true, avatar: true } } } },
               creator: { select: { id: true, name: true, avatar: true } },
               tags: { include: { tag: true } },
             },
@@ -253,7 +253,7 @@ export const listActions = async (req: AuthRequest, res: Response) => {
       OR: [
         { title: { contains: search, mode: 'insensitive' as const } },
         { description: { contains: search, mode: 'insensitive' as const } },
-        { assignee: { name: { contains: search, mode: 'insensitive' as const } } },
+        { assignees: { some: { user: { name: { contains: search, mode: 'insensitive' as const } } } } },
         { tags: { some: { tag: { name: { contains: search, mode: 'insensitive' as const } } } } },
         ...(matchingStatuses.length ? [{ status: { in: matchingStatuses } }] : []),
         ...(matchingActionNumber ? [{ actionNumber: matchingActionNumber }] : []),
@@ -270,7 +270,7 @@ export const listActions = async (req: AuthRequest, res: Response) => {
       where: actionWhere as any,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
-        assignee: { select: { id: true, name: true, avatar: true } },
+        assignees: { include: { user: { select: { id: true, name: true, avatar: true } } } },
         creator: { select: { id: true, name: true, avatar: true } },
         tags: { include: { tag: true } },
       },

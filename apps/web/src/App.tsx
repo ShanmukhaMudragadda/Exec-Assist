@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import { authApi, usersApi } from './services/api'
+import { useSessionGuard } from './hooks/useSessionGuard'
 import LoginPage from './pages/auth/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
@@ -34,10 +35,17 @@ function TimezoneSync() {
   return null
 }
 
+/** Runs session guard (inactivity + token expiry) for authenticated users */
+function SessionGuard() {
+  useSessionGuard()
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <TimezoneSync />
+      <SessionGuard />
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
 

@@ -443,7 +443,7 @@ export default function UploadDataPage() {
             priority: a.priority || 'medium',
             status: a.status || 'todo',
             dueDate: a.dueDate || null,
-            assigneeId: a.assigneeId || null,
+            assigneeIds: a.assigneeIds?.length ? a.assigneeIds : [],
           })
         ))
       }
@@ -822,7 +822,7 @@ export default function UploadDataPage() {
                     { label: 'Urgent', val: generatedActions.filter((a) => a.priority === 'urgent').length },
                     { label: 'High priority', val: generatedActions.filter((a) => a.priority === 'high').length },
                     { label: 'With due dates', val: generatedActions.filter((a) => a.dueDate).length },
-                    { label: 'With assignees', val: generatedActions.filter((a) => a.assigneeId).length },
+                    { label: 'With assignees', val: generatedActions.filter((a) => a.assigneeIds?.length).length },
                   ].map(({ label, val }) => (
                     <div key={label} className="flex justify-between text-xs">
                       <span className="text-[#6b7280]">{label}</span>

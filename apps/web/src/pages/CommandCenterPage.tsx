@@ -12,10 +12,11 @@ import { toast } from '@/hooks/use-toast'
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Tag { id: string; name: string; color: string }
 interface ActionTag { tag: Tag }
+interface ActionAssigneeRecord { user: { id: string; name: string; avatar?: string | null } }
 interface Action {
   id: string; actionNumber?: number | null; title: string; description?: string | null; status: string; priority: string
   dueDate?: string | null
-  assignee?: { id: string; name: string; avatar?: string | null } | null
+  assignees?: ActionAssigneeRecord[]
   creator: { id: string; name: string; avatar?: string | null }
   tags?: ActionTag[]
   initiative?: { id: string; title: string; status: string } | null
@@ -152,6 +153,7 @@ export default function CommandCenterPage() {
   const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [showBulkAssigneeMenu, setShowBulkAssigneeMenu] = useState(false)
+  const [bulkSelectedAssigneeIds, setBulkSelectedAssigneeIds] = useState<string[]>([])
   const [showBulkInitiativeMenu, setShowBulkInitiativeMenu] = useState(false)
 
   // Initiative edit state
@@ -162,12 +164,12 @@ export default function CommandCenterPage() {
 
   // Action quick-edit state
   const [editingAction, setEditingAction] = useState<Action | null>(null)
-  const [editActionForm, setEditActionForm] = useState({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '', assigneeId: '', tagIds: [] as string[] })
+  const [editActionForm, setEditActionForm] = useState({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '', assigneeIds: [] as string[], tagIds: [] as string[] })
   const [savingEditAction, setSavingEditAction] = useState(false)
   const editActionDueDateRef = useRef<HTMLInputElement>(null)
 
   // Add action form
-  const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeId: '', tagIds: [] as string[] })
+  const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [] as string[], tagIds: [] as string[] })
   const [saving, setSaving] = useState(false)
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
   const [assigneeBtnRect, setAssigneeBtnRect] = useState<DOMRect | null>(null)
@@ -334,10 +336,15 @@ export default function CommandCenterPage() {
       suggestions.push({ type: 'action', label: numLabel, sublabel: 'Search by action number', value: numLabel })
     }
     baseActions.filter((a) => a.title.toLowerCase().includes(q)).slice(0, 4).forEach((a) => {
-      if (!seen.has('a:' + a.id)) { seen.add('a:' + a.id); suggestions.push({ type: 'action', label: a.title, sublabel: a.assignee?.name, value: a.title }) }
+      const firstAssigneeName = a.assignees?.[0]?.user?.name
+      if (!seen.has('a:' + a.id)) { seen.add('a:' + a.id); suggestions.push({ type: 'action', label: a.title, sublabel: firstAssigneeName, value: a.title }) }
     })
     const assigneeNames = new Map<string, string>()
-    baseActions.forEach((a) => { if (a.assignee && a.assignee.name.toLowerCase().includes(q)) assigneeNames.set(a.assignee.id, a.assignee.name) })
+    baseActions.forEach((a) => {
+      a.assignees?.forEach((aa) => {
+        if (aa.user.name.toLowerCase().includes(q)) assigneeNames.set(aa.user.id, aa.user.name)
+      })
+    })
     assigneeNames.forEach((name) => { if (!seen.has('as:' + name)) { seen.add('as:' + name); suggestions.push({ type: 'assignee', label: name, sublabel: 'Assignee', value: name }) } })
     const STATUS_DISPLAY: Record<string, string> = { 'todo': 'To Do', 'in-progress': 'In Progress', 'in-review': 'In Review', 'completed': 'Done' }
     Object.entries(STATUS_DISPLAY).forEach(([key, label]) => {
@@ -378,7 +385,8 @@ export default function CommandCenterPage() {
       const matchNum = !isNaN(numSearch) && numSearch > 0 ? numSearch : null
       base = base.filter((a) =>
         a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) ||
-        a.assignee?.name.toLowerCase().includes(q) || a.tags?.some((at) => at.tag.name.toLowerCase().includes(q)) ||
+        a.assignees?.some((aa) => aa.user.name.toLowerCase().includes(q)) ||
+        a.tags?.some((at) => at.tag.name.toLowerCase().includes(q)) ||
         (matchNum !== null && a.actionNumber === matchNum)
       )
     }
@@ -448,7 +456,7 @@ export default function CommandCenterPage() {
       priority: action.priority,
       status: action.status,
       dueDate: action.dueDate?.split('T')[0] || '',
-      assigneeId: action.assignee?.id || '',
+      assigneeIds: action.assignees?.map((a) => a.user.id) || [],
       tagIds: action.tags?.map((at) => at.tag.id) || [],
     })
   }
@@ -463,7 +471,7 @@ export default function CommandCenterPage() {
         priority: editActionForm.priority,
         status: editActionForm.status,
         dueDate: editActionForm.dueDate || null,
-        assigneeId: editActionForm.assigneeId || null,
+        assigneeIds: editActionForm.assigneeIds,
         tagIds: editActionForm.tagIds,
       })
       queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
@@ -479,7 +487,7 @@ export default function CommandCenterPage() {
     setSaving(true)
     try {
       if (initiativeId) {
-        await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeId: actionForm.assigneeId || null, tagIds: actionForm.tagIds })
+        await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeIds: actionForm.assigneeIds, tagIds: actionForm.tagIds })
         queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
       } else {
         await actionsApi.createStandalone({ title: actionForm.title.trim(), description: actionForm.description.trim() || undefined, priority: actionForm.priority, dueDate: actionForm.dueDate || null, tagIds: actionForm.tagIds })
@@ -487,7 +495,7 @@ export default function CommandCenterPage() {
       }
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setShowAddAction(false)
-      setActionForm({ title: '', description: '', priority: 'medium', dueDate: '', assigneeId: '', tagIds: [] })
+      setActionForm({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [], tagIds: [] })
     } finally { setSaving(false) }
   }
 
@@ -526,11 +534,12 @@ export default function CommandCenterPage() {
     setShowBulkStatusMenu(false)
     setShowBulkPriorityMenu(false)
     setShowBulkAssigneeMenu(false)
+    setBulkSelectedAssigneeIds([])
     setShowBulkInitiativeMenu(false)
     setConfirmBulkDelete(false)
   }
 
-  const handleBulkUpdate = async (update: { status?: string; priority?: string; assigneeId?: string | null; initiativeId?: string | null }) => {
+  const handleBulkUpdate = async (update: { status?: string; priority?: string; assigneeIds?: string[] | null; initiativeId?: string | null }) => {
     if (selectedActionIds.size === 0) return
     setBulkUpdating(true)
     try {
@@ -725,7 +734,7 @@ export default function CommandCenterPage() {
     const isDueSoon = action.dueDate && !isOD && differenceInDays(new Date(action.dueDate), now) <= 3 && action.status !== 'completed'
     const actionTags = action.tags?.map((at) => at.tag) || []
     const isSelected = selectedActionIds.has(action.id)
-    const canModifyAction = isOwnerOrAdmin || action.creator?.id === user?.id || action.assignee?.id === user?.id
+    const canModifyAction = isOwnerOrAdmin || action.creator?.id === user?.id || action.assignees?.some((a) => a.user.id === user?.id)
     return (
       <div
         className={cn('group relative flex items-start gap-0 transition-colors duration-100',
@@ -804,12 +813,24 @@ export default function CommandCenterPage() {
               ))}
             </div>
           )}
-          {/* Bottom: assignee + status */}
+          {/* Bottom: assignees + status */}
           <div className="flex items-center gap-2">
-            {action.assignee ? (
-              <div className="flex items-center gap-1.5">
-                <Avatar name={action.assignee.name} avatar={action.assignee.avatar} size="xs" />
-                <span className="text-[12px] text-[#6b7280]">{action.assignee.name}</span>
+            {action.assignees && action.assignees.length > 0 ? (
+              <div className="flex items-center gap-1">
+                {/* Avatar stack for multiple assignees */}
+                <div className="flex -space-x-1.5">
+                  {action.assignees.slice(0, 3).map((aa) => (
+                    <Avatar key={aa.user.id} name={aa.user.name} avatar={aa.user.avatar} size="xs" />
+                  ))}
+                  {action.assignees.length > 3 && (
+                    <div className="w-5 h-5 rounded-full bg-[#f3f4f6] border border-white flex items-center justify-center text-[9px] font-bold text-[#6b7280]">
+                      +{action.assignees.length - 3}
+                    </div>
+                  )}
+                </div>
+                {action.assignees.length === 1 && (
+                  <span className="text-[12px] text-[#6b7280]">{action.assignees[0].user.name}</span>
+                )}
               </div>
             ) : (
               <span className="text-[12px] text-[#d1d5db]">Unassigned</span>
@@ -905,8 +926,8 @@ export default function CommandCenterPage() {
                           {/* Members */}
                           <div className="p-2">
                             {all.map((c) => {
-                              const open = baseActions.filter((a) => a.assignee?.id === c.id && a.status !== 'completed').length
-                              const total = baseActions.filter((a) => a.assignee?.id === c.id).length
+                              const open = baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === c.id) && a.status !== 'completed').length
+                              const total = baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === c.id)).length
                               const pct = total > 0 ? Math.round((open / total) * 100) : 0
                               const barColor = open === 0 ? '#e5e7eb' : open >= 5 ? '#dc2626' : '#4648d4'
                               return (
@@ -1149,7 +1170,7 @@ export default function CommandCenterPage() {
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
                     </div>
                     <div>
-                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{baseActions.filter((a) => (a.assignee?.id === user?.id || (a as any).assigneeId === user?.id) && a.status !== 'completed').length}</p>
+                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === user?.id) && a.status !== 'completed').length}</p>
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Mine</p>
                     </div>
                   </>
@@ -1186,7 +1207,7 @@ export default function CommandCenterPage() {
                   <div className="absolute left-[27px] top-4 bottom-4 w-px bg-[#f0f0f0]" />
                   <div className="space-y-0">
                     {baseActions.slice(0, 6).map((action) => {
-                      const person = action.assignee || action.creator
+                      const person = (action.assignees && action.assignees.length > 0) ? action.assignees[0].user : action.creator
                       const initials = person?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?'
                       const isDone = action.status === 'completed'
                       const isOverdue = action.dueDate && isBefore(new Date(action.dueDate), now) && !isDone
@@ -1295,11 +1316,11 @@ export default function CommandCenterPage() {
                       {actionForm.dueDate && <button type="button" onClick={() => setActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px] leading-none">×</button>}
                     </div>
                   </div>
-                  {/* Assignee */}
+                  {/* Assignees (multi-select) */}
                   {(initiativeId ? (initiative != null) : (user != null)) && (
-                    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
-                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">person</span>
-                      <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Assignee</span>
+                    <div className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af] mt-0.5">group</span>
+                      <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0 mt-0.5">Assignees</span>
                       <div className="flex-1" ref={assigneeDropdownRef}>
                         {(() => {
                           const allAssignees = initiativeId && initiative
@@ -1308,34 +1329,53 @@ export default function CommandCenterPage() {
                                 ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null, role: m.role })),
                               ]
                             : user ? [{ id: user.id, name: user.name, avatar: user.avatar || null, role: 'me' }] : []
-                          const selected = allAssignees.find((a) => a.id === actionForm.assigneeId)
+                          const selectedIds = actionForm.assigneeIds
+                          const toggleAssignee = (id: string) => {
+                            setActionForm((f) => ({
+                              ...f,
+                              assigneeIds: f.assigneeIds.includes(id)
+                                ? f.assigneeIds.filter((x) => x !== id)
+                                : [...f.assigneeIds, id],
+                            }))
+                          }
                           return (
                             <>
                               <button ref={assigneeBtnRef} type="button"
                                 onClick={() => { if (!showAssigneeDropdown && assigneeBtnRef.current) setAssigneeBtnRect(assigneeBtnRef.current.getBoundingClientRect()); setShowAssigneeDropdown((v) => !v) }}
-                                className="flex items-center gap-2 text-[13px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors w-full"
+                                className="flex items-center gap-1.5 flex-wrap text-[13px] font-medium text-[#374151] hover:text-[#4648d4] transition-colors w-full min-h-[24px]"
                               >
-                                {selected ? (<><Avatar name={selected.name} avatar={selected.avatar} size="xs" /><span>{selected.name}</span></>) : <span className="text-[#9ca3af]">Unassigned</span>}
+                                {selectedIds.length > 0 ? (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {selectedIds.map((id) => {
+                                      const a = allAssignees.find((x) => x.id === id)
+                                      return a ? (
+                                        <span key={id} className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[#ede9fe] text-[#4648d4] text-[11px] font-semibold">
+                                          <Avatar name={a.name} avatar={a.avatar} size="xs" />
+                                          {a.name}
+                                        </span>
+                                      ) : null
+                                    })}
+                                  </div>
+                                ) : <span className="text-[#9ca3af]">Unassigned</span>}
                               </button>
                               {showAssigneeDropdown && assigneeBtnRect && createPortal(
                                 <div ref={assigneePortalRef} style={{ position: 'fixed', top: assigneeBtnRect.bottom + 4, left: assigneeBtnRect.left, zIndex: 9999, minWidth: 220 }}
                                   className="bg-white border border-[#e5e7eb] rounded-xl shadow-xl py-1 overflow-hidden"
                                 >
-                                  <button onMouseDown={(e) => { e.preventDefault(); setActionForm((f) => ({ ...f, assigneeId: '' })); setShowAssigneeDropdown(false) }}
-                                    className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb]', !actionForm.assigneeId ? 'text-[#4648d4] font-semibold' : 'text-[#9ca3af]')}
-                                  >
-                                    <div className="w-5 h-5 rounded-full border-2 border-dashed border-[#d1d5db] flex items-center justify-center shrink-0" />
-                                    Unassigned
-                                  </button>
-                                  {allAssignees.map((a) => (
-                                    <button key={a.id} onMouseDown={(e) => { e.preventDefault(); setActionForm((f) => ({ ...f, assigneeId: a.id })); setShowAssigneeDropdown(false) }}
-                                      className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb]', actionForm.assigneeId === a.id ? 'bg-[#f5f3ff]' : '')}
-                                    >
-                                      <Avatar name={a.name} avatar={a.avatar} size="xs" />
-                                      <span className={cn('flex-1 text-left', actionForm.assigneeId === a.id ? 'text-[#4648d4] font-semibold' : 'text-[#374151]')}>{a.name}</span>
-                                      {a.role === 'owner' && <span className="text-[10px] font-bold text-[#9ca3af] uppercase shrink-0">owner</span>}
-                                    </button>
-                                  ))}
+                                  <div className="px-3 py-1.5 text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider">Click to toggle</div>
+                                  {allAssignees.map((a) => {
+                                    const isSelected = selectedIds.includes(a.id)
+                                    return (
+                                      <button key={a.id} onMouseDown={(e) => { e.preventDefault(); toggleAssignee(a.id) }}
+                                        className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[#f9fafb]', isSelected ? 'bg-[#f5f3ff]' : '')}
+                                      >
+                                        <Avatar name={a.name} avatar={a.avatar} size="xs" />
+                                        <span className={cn('flex-1 text-left', isSelected ? 'text-[#4648d4] font-semibold' : 'text-[#374151]')}>{a.name}</span>
+                                        {isSelected && <span className="material-symbols-outlined text-[14px] text-[#4648d4]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                                        {a.role === 'owner' && !isSelected && <span className="text-[10px] font-bold text-[#9ca3af] uppercase shrink-0">owner</span>}
+                                      </button>
+                                    )
+                                  })}
                                 </div>,
                                 document.body
                               )}
@@ -1538,36 +1578,55 @@ export default function CommandCenterPage() {
                     {editActionForm.dueDate && <button type="button" onClick={() => setEditActionForm((f) => ({ ...f, dueDate: '' }))} className="text-[#9ca3af] hover:text-[#dc2626] text-[14px]">×</button>}
                   </div>
                 </div>
-                {/* Assignee */}
+                {/* Assignees (multi-select) */}
                 {(() => {
                   const initData2 = editingAction.initiative?.id === initiativeId ? initiative : null
-                  let assigneeList: { id: string; name: string }[] = []
+                  let assigneeList: { id: string; name: string; avatar?: string | null }[] = []
                   if (initData2) {
                     assigneeList = [
-                      { id: initData2.creator.id, name: initData2.creator.name },
-                      ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '' })),
+                      { id: initData2.creator.id, name: initData2.creator.name, avatar: initData2.creator.avatar || null },
+                      ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null })),
                     ]
                   } else {
                     // CC mode: build from reliable sources already on the action
-                    const seen = new Map<string, string>()
-                    if (user?.id) seen.set(user.id, user.name || 'Me')
+                    const seen = new Map<string, { name: string; avatar?: string | null }>()
+                    if (user?.id) seen.set(user.id, { name: user.name || 'Me', avatar: user.avatar || null })
                     if (editingAction.creator?.id && !seen.has(editingAction.creator.id))
-                      seen.set(editingAction.creator.id, editingAction.creator.name || '')
-                    if (editingAction.assignee?.id && !seen.has(editingAction.assignee.id))
-                      seen.set(editingAction.assignee.id, editingAction.assignee.name || '')
-                    assigneeList = Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
+                      seen.set(editingAction.creator.id, { name: editingAction.creator.name || '', avatar: editingAction.creator.avatar || null })
+                    editingAction.assignees?.forEach((aa) => {
+                      if (!seen.has(aa.user.id)) seen.set(aa.user.id, { name: aa.user.name || '', avatar: aa.user.avatar || null })
+                    })
+                    assigneeList = Array.from(seen.entries()).map(([id, v]) => ({ id, name: v.name, avatar: v.avatar }))
                   }
                   if (!assigneeList.length) return null
+                  const selectedIds = editActionForm.assigneeIds
+                  const toggleEditAssignee = (id: string) => {
+                    setEditActionForm((f) => ({
+                      ...f,
+                      assigneeIds: f.assigneeIds.includes(id)
+                        ? f.assigneeIds.filter((x) => x !== id)
+                        : [...f.assigneeIds, id],
+                    }))
+                  }
                   return (
-                    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
-                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af]">person</span>
-                      <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0">Assignee</span>
-                      <select value={editActionForm.assigneeId} onChange={(e) => setEditActionForm((f) => ({ ...f, assigneeId: e.target.value }))}
-                        className="flex-1 text-[13px] text-[#374151] bg-transparent focus:outline-none cursor-pointer"
-                      >
-                        <option value="">Unassigned</option>
-                        {assigneeList.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
+                    <div className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-[#f9fafb]">
+                      <span className="material-symbols-outlined text-[16px] text-[#9ca3af] mt-0.5">group</span>
+                      <span className="text-[12px] font-medium text-[#9ca3af] w-20 shrink-0 mt-0.5">Assignees</span>
+                      <div className="flex-1 space-y-1">
+                        {assigneeList.map((a) => {
+                          const isSelected = selectedIds.includes(a.id)
+                          return (
+                            <button key={a.id} type="button" onClick={() => toggleEditAssignee(a.id)}
+                              className={cn('w-full flex items-center gap-2 px-2 py-1 rounded-lg text-[12px] transition-colors',
+                                isSelected ? 'bg-[#ede9fe] text-[#4648d4]' : 'text-[#374151] hover:bg-[#f9fafb]')}
+                            >
+                              <Avatar name={a.name} avatar={a.avatar} size="xs" />
+                              <span className="flex-1 text-left font-medium">{a.name}</span>
+                              {isSelected && <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   )
                 })()}
@@ -1910,7 +1969,7 @@ export default function CommandCenterPage() {
 
           {/* Priority */}
           <div className="relative">
-            <button onClick={() => { setShowBulkPriorityMenu((v) => !v); setShowBulkAssigneeMenu(false) }}
+            <button onClick={() => { setShowBulkPriorityMenu((v) => !v); setShowBulkAssigneeMenu(false); setBulkSelectedAssigneeIds([]) }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
             >
               <span className="material-symbols-outlined text-[12px]">flag</span>
@@ -1931,40 +1990,80 @@ export default function CommandCenterPage() {
             )}
           </div>
 
-          {/* Assignee */}
+          {/* Assignees (multi-select bulk) */}
           <div className="relative">
             {(() => {
               const bulkAssignees = initiativeId && initiative
                 ? [{ id: initiative.creator.id, name: initiative.creator.name, avatar: initiative.creator.avatar || null }, ...members.filter((m) => m.userId !== initiative.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null }))]
                 : user ? [{ id: user.id, name: user.name, avatar: user.avatar || null }] : []
+              const toggleBulkAssignee = (id: string) => {
+                setBulkSelectedAssigneeIds((prev) =>
+                  prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                )
+              }
               return (
                 <>
-                  <button onClick={() => { setShowBulkAssigneeMenu((v) => !v); setShowBulkPriorityMenu(false) }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
+                  <button onClick={() => {
+                    setShowBulkAssigneeMenu((v) => {
+                      if (!v) setBulkSelectedAssigneeIds([]) // reset selection on open
+                      return !v
+                    })
+                    setShowBulkPriorityMenu(false)
+                  }}
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                      bulkSelectedAssigneeIds.length > 0 && !showBulkAssigneeMenu
+                        ? 'bg-[#ede9fe] text-[#4648d4] border-[#c4b5fd]'
+                        : 'bg-[#f3f4f6] text-[#374151] border-[#e5e7eb] hover:bg-[#e5e7eb]'
+                    )}
                   >
-                    <span className="material-symbols-outlined text-[12px]">person</span>
-                    Assignee
+                    <span className="material-symbols-outlined text-[12px]">group</span>
+                    Assignees{bulkSelectedAssigneeIds.length > 0 && !showBulkAssigneeMenu ? ` (${bulkSelectedAssigneeIds.length})` : ''}
                     <span className="material-symbols-outlined text-[11px]">expand_more</span>
                   </button>
                   {showBulkAssigneeMenu && (
-                    <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-44 z-10">
-                      <button onClick={() => { handleBulkUpdate({ assigneeId: null }); setShowBulkAssigneeMenu(false) }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[#9ca3af] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">person_off</span>
-                        Unassign
-                      </button>
-                      {bulkAssignees.map((a) => (
-                        <button key={a.id} onClick={() => { handleBulkUpdate({ assigneeId: a.id }); setShowBulkAssigneeMenu(false) }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4] transition-colors"
+                    <div className="absolute top-full mt-1 left-0 bg-white rounded-xl shadow-xl border border-[#e5e7eb] overflow-hidden w-52 z-10">
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">Toggle to select multiple</div>
+                      {bulkAssignees.map((a) => {
+                        const isSelected = bulkSelectedAssigneeIds.includes(a.id)
+                        return (
+                          <button key={a.id} onClick={() => toggleBulkAssignee(a.id)}
+                            className={cn('w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors',
+                              isSelected ? 'bg-[#f5f3ff] text-[#4648d4]' : 'text-[#374151] hover:bg-[#f5f3ff] hover:text-[#4648d4]'
+                            )}
+                          >
+                            {a.avatar
+                              ? <img src={a.avatar} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                              : <div className="w-5 h-5 rounded-full bg-[#ede9fe] text-[#4648d4] text-[9px] font-bold flex items-center justify-center shrink-0">{a.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}</div>
+                            }
+                            <span className="flex-1 text-left">{a.name}</span>
+                            {isSelected && <span className="material-symbols-outlined text-[14px] text-[#4648d4]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>}
+                          </button>
+                        )
+                      })}
+                      <div className="border-t border-[#f3f4f6] p-2 flex gap-1.5">
+                        <button
+                          onClick={() => {
+                            handleBulkUpdate({ assigneeIds: [] })
+                            setShowBulkAssigneeMenu(false)
+                            setBulkSelectedAssigneeIds([])
+                          }}
+                          className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-[#f3f4f6] text-[#9ca3af] hover:bg-[#e5e7eb] transition-colors"
                         >
-                          {a.avatar
-                            ? <img src={a.avatar} className="w-5 h-5 rounded-full object-cover" />
-                            : <div className="w-5 h-5 rounded-full bg-[#ede9fe] text-[#4648d4] text-[9px] font-bold flex items-center justify-center">{a.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}</div>
-                          }
-                          {a.name}
+                          Unassign All
                         </button>
-                      ))}
+                        <button
+                          disabled={bulkSelectedAssigneeIds.length === 0}
+                          onClick={() => {
+                            handleBulkUpdate({ assigneeIds: bulkSelectedAssigneeIds })
+                            setShowBulkAssigneeMenu(false)
+                            setBulkSelectedAssigneeIds([])
+                          }}
+                          className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-[#4648d4] text-white hover:bg-[#3730a3] transition-colors disabled:opacity-40"
+                        >
+                          Apply{bulkSelectedAssigneeIds.length > 0 ? ` (${bulkSelectedAssigneeIds.length})` : ''}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </>
@@ -1974,7 +2073,7 @@ export default function CommandCenterPage() {
 
           {/* Initiative */}
           <div className="relative">
-            <button onClick={() => { setShowBulkInitiativeMenu((v) => !v); setShowBulkPriorityMenu(false); setShowBulkAssigneeMenu(false) }}
+            <button onClick={() => { setShowBulkInitiativeMenu((v) => !v); setShowBulkPriorityMenu(false); setShowBulkAssigneeMenu(false); setBulkSelectedAssigneeIds([]) }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#f3f4f6] text-[#374151] border border-[#e5e7eb] hover:bg-[#e5e7eb] transition-colors"
             >
               <span className="material-symbols-outlined text-[12px]">folder</span>

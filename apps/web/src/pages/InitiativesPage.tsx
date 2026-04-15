@@ -360,7 +360,7 @@ export default function InitiativesPage() {
                     <div className="absolute left-[27px] top-4 bottom-4 w-px bg-[#f0f0f0]" />
                     <div className="space-y-0">
                       {items.map((a: any) => {
-                        const person = a.assignee || a.creator
+                        const person = (a.assignees && a.assignees.length > 0 ? a.assignees[0].user : null) || a.creator
                         const initials = person?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?'
                         const isDone = a.status === 'completed'
                         return (

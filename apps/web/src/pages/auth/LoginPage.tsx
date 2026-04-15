@@ -3,6 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { authApi } from '@/services/api'
 
+const REASON_MESSAGES: Record<string, string> = {
+  token_expired: 'Your session has expired. Please sign in again.',
+  inactivity:    'You were signed out due to inactivity. Please sign in again.',
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -10,6 +15,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   const redirect = searchParams.get('redirect') || '/dashboard'
+  const reason   = searchParams.get('reason') || ''
+  const sessionMessage = REASON_MESSAGES[reason] || ''
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -100,6 +107,13 @@ export default function LoginPage() {
             <h2 className="text-[28px] font-bold text-[#0f172a] tracking-[-0.03em] mb-1">Welcome</h2>
             <p className="text-[14px] text-slate-500 font-medium">Sign in to continue to ExecAssist.</p>
           </header>
+
+          {sessionMessage && (
+            <div className="w-full mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 font-medium text-center flex items-center gap-2 justify-center">
+              <span>⚠️</span>
+              {sessionMessage}
+            </div>
+          )}
 
           {error && (
             <div className="w-full mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 font-medium text-center">

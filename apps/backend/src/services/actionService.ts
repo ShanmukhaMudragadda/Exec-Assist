@@ -4,21 +4,28 @@ import { io } from '../index'
 
 interface BulkUpdateActionData {
   status?: string;
-  assigneeId?: string;
+  assigneeIds?: string[];
   dueDate?: Date | null;
   initiativeId?: string | null;
 }
 
 export async function bulkUpdateActions(actionIds: string[], data: BulkUpdateActionData) {
   try {
+    const { assigneeIds, ...scalarData } = data
     const updatedActions = await prisma.$transaction(async (tx) => {
       const updates = actionIds.map((id) =>
         tx.action.update({
           where: { id },
           data: {
-            ...data,
+            ...scalarData,
             // Ensure dueDate is correctly handled as null if provided as an empty string or invalid date
-            dueDate: data.dueDate === null ? null : (data.dueDate ? new Date(data.dueDate) : undefined),
+            dueDate: scalarData.dueDate === null ? null : (scalarData.dueDate ? new Date(scalarData.dueDate) : undefined),
+            ...(assigneeIds !== undefined && {
+              assignees: {
+                deleteMany: {},
+                create: assigneeIds.map((uid) => ({ userId: uid })),
+              },
+            }),
           },
         })
       )
