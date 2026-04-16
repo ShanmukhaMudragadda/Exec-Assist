@@ -643,6 +643,7 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
       filter === 'open'      ? { status: { notIn: ['completed'] } } :
       filter === 'completed' ? { status: 'completed' as const } :
       filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
+      filter === 'mine'      ? { assignees: { some: { userId } } } :
       null;
 
     const STATUS_LABELS: Record<string, string> = {
@@ -697,19 +698,20 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
         prisma.action.count({ where: { AND: [baseWhere, { status: { notIn: ['completed'] } }] } as any }),
         prisma.action.count({ where: { AND: [baseWhere, { dueDate: { lt: now }, status: { notIn: ['completed'] } }] } as any }),
         prisma.action.count({ where: { AND: [baseWhere, { status: 'completed' }] } as any }),
+        prisma.action.count({ where: { AND: [baseWhere, { assignees: { some: { userId } } }] } as any }),
       ]),
     ]);
 
-    const [allCount, openCount, overdueCount, completedCount] = counts;
+    const [allCount, openCount, overdueCount, completedCount, mineCount] = counts;
     const filteredTotal = filterCondition
-      ? (filter === 'open' ? openCount : filter === 'overdue' ? overdueCount : completedCount)
+      ? (filter === 'open' ? openCount : filter === 'overdue' ? overdueCount : filter === 'mine' ? mineCount : completedCount)
       : allCount;
 
     const hasMore = actions.length > limit;
     const data = hasMore ? actions.slice(0, limit) : actions;
     const nextCursor = hasMore ? data[data.length - 1].id : null;
 
-    const stats = { all: allCount, open: openCount, overdue: overdueCount, completed: completedCount };
+    const stats = { all: allCount, open: openCount, overdue: overdueCount, completed: completedCount, mine: mineCount };
 
     return res.json({ actions: data, meta: { total: filteredTotal, hasMore, nextCursor }, stats });
   } catch (err) {

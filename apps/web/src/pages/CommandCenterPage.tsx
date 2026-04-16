@@ -53,7 +53,7 @@ const PRIORITY_DOT: Record<string, string> = {
   urgent: 'bg-[#dc2626]', high: 'bg-[#4648d4]', medium: 'bg-[#2563eb]', low: 'bg-[#e5e7eb]',
 }
 
-type ActionFilter = 'all' | 'open' | 'overdue' | 'completed'
+type ActionFilter = 'all' | 'open' | 'overdue' | 'completed' | 'mine'
 type SettingsTab = 'members' | 'notifications'
 
 // ── Helper components ──────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ export default function CommandCenterPage() {
   const now = new Date()
 
   // UI state
-  const [actionFilter, setActionFilter] = useState<ActionFilter>('all')
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('mine')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
@@ -204,7 +204,7 @@ export default function CommandCenterPage() {
   useEffect(() => {
     setSearchQuery('')
     setTagFilter(null)
-    setActionFilter('all')
+    setActionFilter('mine')
     setExtraActions([])
     setActionsCursor(null)
     setHasMoreActions(false)
@@ -376,6 +376,7 @@ export default function CommandCenterPage() {
       case 'open': base = baseActions.filter((a) => a.status !== 'completed'); break
       case 'overdue': base = overdueActions; break
       case 'completed': base = baseActions.filter((a) => a.status === 'completed'); break
+      case 'mine': base = baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === user?.id)); break
       default: base = baseActions
     }
     if (tagFilter) base = base.filter((a) => a.tags?.some((at) => at.tag.id === tagFilter))
@@ -670,7 +671,7 @@ export default function CommandCenterPage() {
                     e.preventDefault()
                     if (s.type === 'status') {
                       const filterMap: Record<string, ActionFilter> = { 'completed': 'completed', 'todo': 'open', 'in-progress': 'open', 'in-review': 'open' }
-                      setActionFilter(filterMap[s.value] ?? 'all')
+                      setActionFilter(filterMap[s.value] ?? 'mine')
                       setSearchQuery(''); setDebouncedSearch('')
                     } else if (s.type === 'tag') {
                       setTagFilter(s.value)
@@ -698,24 +699,31 @@ export default function CommandCenterPage() {
       </div>
       {/* Filters — same tabs in both CC and initiative mode */}
       <div className="flex bg-[#f3f4f6] rounded-lg p-0.5 gap-0.5 overflow-x-auto shrink-0">
-        {(['all', 'open', 'overdue', 'completed'] as ActionFilter[]).map((f) => (
+        {(['mine', 'all', 'open', 'overdue', 'completed'] as ActionFilter[]).map((f) => (
           <button key={f} onClick={() => setActionFilter(f)}
-            className={cn('px-2.5 py-1 text-[12px] font-semibold rounded-md transition-all capitalize shrink-0', actionFilter === f
-              ? f === 'overdue' ? 'bg-[#fef2f2] text-[#dc2626] shadow-sm' : 'bg-white text-[#4648d4] shadow-sm'
+            className={cn('px-2.5 py-1 text-[12px] font-semibold rounded-md transition-all shrink-0', actionFilter === f
+              ? f === 'overdue' ? 'bg-[#fef2f2] text-[#dc2626] shadow-sm'
+                : f === 'mine' ? 'bg-[#ede9fe] text-[#4648d4] shadow-sm'
+                : 'bg-white text-[#4648d4] shadow-sm'
               : 'text-[#9ca3af] hover:text-[#374151]'
             )}
           >
             {(() => {
-              const label = f === 'all' ? 'All' : f === 'open' ? 'Open' : f === 'overdue' ? 'Overdue' : 'Done'
+              const label = f === 'all' ? 'All' : f === 'open' ? 'Open' : f === 'overdue' ? 'Overdue' : f === 'mine' ? 'Mine' : 'Done'
               if (!initiativeId) {
                 // CC mode: use server-returned stats so all tabs show counts upfront
-                const count = ccStats
-                  ? f === 'all' ? ccStats.all : f === 'open' ? ccStats.open : f === 'overdue' ? ccStats.overdue : ccStats.completed
+                const ccStatsExt = ccStats as any
+                const count = ccStatsExt
+                  ? f === 'all' ? ccStatsExt.all : f === 'open' ? ccStatsExt.open : f === 'overdue' ? ccStatsExt.overdue : f === 'mine' ? ccStatsExt.mine : ccStatsExt.completed
                   : null
                 return count != null ? `${label} (${count})` : label
               }
-              // Initiative mode: use server-side counts from actionsMeta
+              // Initiative mode: client-side count (no server stat for 'mine' in initiative context)
               const meta = (initiative as any)?.actionsMeta
+              if (f === 'mine') {
+                const mineCount = baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === user?.id)).length
+                return `${label} (${mineCount})`
+              }
               const count = f === 'all' ? (meta?.total ?? baseActions.length)
                 : f === 'open' ? (meta?.open ?? openActions.length)
                 : f === 'overdue' ? (meta?.overdue ?? overdueActions.length)
@@ -1070,7 +1078,7 @@ export default function CommandCenterPage() {
                 <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] py-16 text-center">
                   <span className="material-symbols-outlined text-[36px] text-[#e5e7eb] block mb-3" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
                   <p className="text-[14px] font-medium text-[#9ca3af]">
-                    {actionFilter === 'all' ? 'All caught up — no open actions.' : 'No actions match this filter.'}
+                    {actionFilter === 'mine' ? 'No actions assigned to you.' : actionFilter === 'all' ? 'All caught up — no open actions.' : 'No actions match this filter.'}
                   </p>
                 </div>
               ) : (

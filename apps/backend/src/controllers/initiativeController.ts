@@ -235,6 +235,7 @@ export const listActions = async (req: AuthRequest, res: Response) => {
       filter === 'open'      ? { status: { notIn: ['completed'] } } :
       filter === 'completed' ? { status: 'completed' as const } :
       filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
+      filter === 'mine'      ? { assignees: { some: { userId } } } :
       null;
 
     const STATUS_LABELS: Record<string, string> = {

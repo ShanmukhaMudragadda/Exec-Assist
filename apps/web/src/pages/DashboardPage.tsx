@@ -88,13 +88,17 @@ export default function DashboardPage() {
 
   const allInitiatives: any[] = (initiativesData as any)?.initiatives || []
   const allActions: any[] = (ccData as any)?.actions || []
+  // Use server-side counts so stats are accurate even when there are more than one page of actions
+  const ccStats = (ccData as any)?.stats as { all: number; open: number; overdue: number; completed: number } | undefined
 
   const overdueActions = allActions.filter((a) => a.dueDate && isBefore(new Date(a.dueDate), now) && a.status !== 'completed')
   const todayActions = allActions.filter((a) => a.dueDate && isToday(new Date(a.dueDate)) && a.status !== 'completed')
   const urgentActions = allActions.filter((a) => a.priority === 'urgent' && a.status !== 'completed')
   const atRiskInits = allInitiatives.filter((i) => i.status === 'at-risk')
-  const openActions = allActions.filter((a) => a.status !== 'completed')
-  const completedActions = allActions.filter((a) => a.status === 'completed')
+  // Displayed counts — prefer server stats (accurate) over client-side filtered arrays (paginated)
+  const openCount = ccStats?.open ?? allActions.filter((a) => a.status !== 'completed').length
+  const overdueCount = ccStats?.overdue ?? overdueActions.length
+  const completedCount = ccStats?.completed ?? allActions.filter((a) => a.status === 'completed').length
 
   const getActionPath = (action: any) =>
     action.initiativeId
@@ -126,12 +130,12 @@ export default function DashboardPage() {
           {/* Stat strip */}
           <div className="flex items-center gap-3.5 mt-1 flex-wrap">
             <div className="text-right">
-              <p className="text-[24px] font-bold text-[#111827] tabular-nums leading-none">{openActions.length}</p>
+              <p className="text-[24px] font-bold text-[#111827] tabular-nums leading-none">{openCount}</p>
               <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-1">Open</p>
             </div>
-            {overdueActions.length > 0 && (
+            {overdueCount > 0 && (
               <div className="text-right">
-                <p className="text-[24px] font-bold text-[#dc2626] tabular-nums leading-none">{overdueActions.length}</p>
+                <p className="text-[24px] font-bold text-[#dc2626] tabular-nums leading-none">{overdueCount}</p>
                 <p className="text-[11px] text-[#dc2626] uppercase tracking-wider font-semibold mt-1">Overdue</p>
               </div>
             )}
@@ -245,9 +249,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#f9fafb]">
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-[14px] font-semibold text-[#111827]">Priority Queue</h2>
-                  {overdueActions.length > 0 && (
+                  {overdueCount > 0 && (
                     <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-[#fef2f2] text-[#dc2626]">
-                      {overdueActions.length} overdue
+                      {overdueCount} overdue
                     </span>
                   )}
                 </div>
@@ -381,7 +385,7 @@ export default function DashboardPage() {
                   className="rounded-xl p-3.5 text-center"
                   style={{ background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)' }}
                 >
-                  <p className="text-[26px] font-bold text-[#111827] tabular-nums leading-none">{completedActions.length}</p>
+                  <p className="text-[26px] font-bold text-[#111827] tabular-nums leading-none">{completedCount}</p>
                   <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-2">Completed</p>
                 </div>
                 <div
