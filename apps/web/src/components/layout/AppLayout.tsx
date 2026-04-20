@@ -21,7 +21,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/'
   const isInitiatives = location.pathname.startsWith('/initiatives')
   const isCommandCenter = location.pathname.startsWith('/command-center')
-
   const userInitials = user?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
 
   const navItems = [

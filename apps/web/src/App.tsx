@@ -10,6 +10,7 @@ import InitiativesPage from './pages/InitiativesPage'
 import CommandCenterPage from './pages/CommandCenterPage'
 import UploadDataPage from './pages/UploadDataPage'
 import ActionDetailPage from './pages/ActionDetailPage'
+import UserGuidePage from './pages/UserGuidePage'
 import { Toaster } from './components/ui/toaster'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -69,6 +70,9 @@ export default function App() {
 
         {/* Profile */}
         <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+
+        {/* User Guide — public, no login required */}
+        <Route path="/user-guide" element={<UserGuidePage />} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
