@@ -20,12 +20,14 @@ type Props = {
 const ROLE_LABELS: Record<WorkspaceMemberRole, string> = {
   owner: 'Owner',
   admin: 'Admin',
+  collaborator: 'Collaborator',
   member: 'Member',
 }
 
 const ROLE_COLORS: Record<WorkspaceMemberRole, { bg: string; text: string }> = {
   owner: { bg: '#fef3c7', text: '#d97706' },
   admin: { bg: '#dbeafe', text: '#2563eb' },
+  collaborator: { bg: '#ede9fe', text: '#4648d4' },
   member: { bg: '#f3f4f6', text: '#6b7280' },
 }
 
@@ -101,12 +103,12 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
   const [description, setDescription] = useState('')
   const [showAddMember, setShowAddMember] = useState(false)
   const [addEmail, setAddEmail] = useState('')
-  const [addRole, setAddRole] = useState<'admin' | 'member'>('member')
+  const [addRole, setAddRole] = useState<'admin' | 'collaborator' | 'member'>('collaborator')
   const [addProfile, setAddProfile] = useState('')
 
   // Member edit sheet
   const [editMember, setEditMember] = useState<WorkspaceMember | null>(null)
-  const [editRole, setEditRole] = useState<'admin' | 'member'>('member')
+  const [editRole, setEditRole] = useState<'admin' | 'collaborator' | 'member'>('member')
   const [editDept, setEditDept] = useState('')
 
   // ── Queries ──────────────────────────────────────────────────────────────────
@@ -210,7 +212,7 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const openEditMember = (member: WorkspaceMember) => {
     setEditMember(member)
-    setEditRole(member.role as 'admin' | 'member')
+    setEditRole(member.role as 'admin' | 'collaborator' | 'member')
     setEditDept((member as any).profile || '')
   }
 
@@ -535,14 +537,14 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
 
           <Text style={styles.sheetFieldLabel}>Role</Text>
           <View style={[styles.toggleRow, { marginBottom: 16 }]}>
-            {(['admin', 'member'] as const).map((r) => (
+            {(['admin', 'collaborator', 'member'] as const).map((r) => (
               <TouchableOpacity
                 key={r}
                 style={[styles.toggleBtn, addRole === r && styles.toggleBtnActive]}
                 onPress={() => setAddRole(r)}
               >
                 <Text style={[styles.toggleBtnText, addRole === r && styles.toggleBtnTextActive]}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                  {ROLE_LABELS[r]}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -589,14 +591,14 @@ export default function WorkspaceSettingsScreen({ navigation, route }: Props) {
           {/* Role */}
           <Text style={styles.sheetFieldLabel}>Role</Text>
           <View style={styles.toggleRow}>
-            {(['admin', 'member'] as const).map((r) => (
+            {(['admin', 'collaborator', 'member'] as const).map((r) => (
               <TouchableOpacity
                 key={r}
                 style={[styles.toggleBtn, editRole === r && styles.toggleBtnActive]}
                 onPress={() => setEditRole(r)}
               >
                 <Text style={[styles.toggleBtnText, editRole === r && styles.toggleBtnTextActive]}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                  {ROLE_LABELS[r]}
                 </Text>
               </TouchableOpacity>
             ))}

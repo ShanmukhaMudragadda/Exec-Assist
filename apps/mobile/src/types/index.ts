@@ -14,7 +14,7 @@ export interface User {
 
 // ─── Workspace ───────────────────────────────────────────────────────────────
 
-export type WorkspaceMemberRole = 'owner' | 'admin' | 'member'
+export type WorkspaceMemberRole = 'owner' | 'admin' | 'collaborator' | 'member'
 
 export interface WorkspaceMember {
   userId: string

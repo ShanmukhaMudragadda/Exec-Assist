@@ -166,10 +166,13 @@ export default function CommandCenterPage() {
   const [editingAction, setEditingAction] = useState<Action | null>(null)
   const [editActionForm, setEditActionForm] = useState({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '', assigneeIds: [] as string[], tagIds: [] as string[] })
   const [savingEditAction, setSavingEditAction] = useState(false)
+  const [editActionInviteEmail, setEditActionInviteEmail] = useState('')
+  const [editActionInviting, setEditActionInviting] = useState(false)
   const editActionDueDateRef = useRef<HTMLInputElement>(null)
 
   // Add action form
-  const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [] as string[], tagIds: [] as string[] })
+  const [actionForm, setActionForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [] as string[], tagIds: [] as string[], inviteEmails: [] as string[] })
+  const [addActionInviteInput, setAddActionInviteInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
   const [assigneeBtnRect, setAssigneeBtnRect] = useState<DOMRect | null>(null)
@@ -187,11 +190,11 @@ export default function CommandCenterPage() {
 
   // Settings state
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
+  const [inviteRole, setInviteRole] = useState<'member' | 'collaborator' | 'admin'>('collaborator')
   const [inviteDepartment, setInviteDepartment] = useState('')
   const [inviting, setInviting] = useState(false)
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
-  const [editMemberRole, setEditMemberRole] = useState<'member' | 'admin'>('member')
+  const [editMemberRole, setEditMemberRole] = useState<'member' | 'collaborator' | 'admin'>('member')
   const [editMemberDepartment, setEditMemberDepartment] = useState('')
   const [savingMember, setSavingMember] = useState(false)
   const [notifSettings, setNotifSettings] = useState({ emailNotifications: true, dailyReportEnabled: false, dailyReportTime: '09:00' })
@@ -488,7 +491,7 @@ export default function CommandCenterPage() {
     setSaving(true)
     try {
       if (initiativeId) {
-        await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeIds: actionForm.assigneeIds, tagIds: actionForm.tagIds })
+        await actionsApi.create(initiativeId, { ...actionForm, dueDate: actionForm.dueDate || null, assigneeIds: actionForm.assigneeIds, tagIds: actionForm.tagIds, inviteEmails: actionForm.inviteEmails })
         queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
       } else {
         await actionsApi.createStandalone({ title: actionForm.title.trim(), description: actionForm.description.trim() || undefined, priority: actionForm.priority, dueDate: actionForm.dueDate || null, tagIds: actionForm.tagIds })
@@ -496,7 +499,8 @@ export default function CommandCenterPage() {
       }
       queryClient.invalidateQueries({ queryKey: ['command-center'] })
       setShowAddAction(false)
-      setActionForm({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [], tagIds: [] })
+      setAddActionInviteInput('')
+      setActionForm({ title: '', description: '', priority: 'medium', dueDate: '', assigneeIds: [], tagIds: [], inviteEmails: [] })
     } finally { setSaving(false) }
   }
 
@@ -1384,6 +1388,55 @@ export default function CommandCenterPage() {
                                       </button>
                                     )
                                   })}
+                                  {actionForm.inviteEmails.length > 0 && (
+                                    <div className="px-3 pt-1 pb-0.5 flex flex-wrap gap-1">
+                                      {actionForm.inviteEmails.map((email) => (
+                                        <span key={email} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#f0fdf4] text-[#16a34a] text-[11px] font-semibold border border-[#bbf7d0]">
+                                          <span className="material-symbols-outlined text-[11px]">mail</span>
+                                          {email}
+                                          <button type="button" onMouseDown={(e) => { e.preventDefault(); setActionForm((f) => ({ ...f, inviteEmails: f.inviteEmails.filter((x) => x !== email) })) }} className="ml-0.5 text-[#16a34a] hover:text-[#dc2626]">×</button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="px-3 pt-2 pb-2 border-t border-[#f3f4f6] mt-1">
+                                    <div className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider mb-1.5">Invite by email</div>
+                                    <div className="flex gap-1.5">
+                                      <input
+                                        type="email"
+                                        value={addActionInviteInput}
+                                        onChange={(e) => setAddActionInviteInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            const email = addActionInviteInput.trim()
+                                            if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !actionForm.inviteEmails.includes(email)) {
+                                              setActionForm((f) => ({ ...f, inviteEmails: [...f.inviteEmails, email] }))
+                                              setAddActionInviteInput('')
+                                            }
+                                          }
+                                        }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        placeholder="email@example.com"
+                                        className="flex-1 h-7 px-2 text-[12px] border border-[#e5e7eb] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#4648d4]"
+                                      />
+                                      <button
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault()
+                                          const email = addActionInviteInput.trim()
+                                          if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !actionForm.inviteEmails.includes(email)) {
+                                            setActionForm((f) => ({ ...f, inviteEmails: [...f.inviteEmails, email] }))
+                                            setAddActionInviteInput('')
+                                          }
+                                        }}
+                                        className="h-7 px-2.5 text-[11px] font-semibold bg-[#4648d4] text-white rounded-lg hover:bg-[#3730a3] disabled:opacity-40"
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+                                    <p className="text-[10px] text-[#9ca3af] mt-1">Will be invited as member when action is created</p>
+                                  </div>
                                 </div>,
                                 document.body
                               )}
@@ -1634,6 +1687,53 @@ export default function CommandCenterPage() {
                             </button>
                           )
                         })}
+                        <div className="pt-2 mt-1 border-t border-[#f3f4f6]">
+                          <p className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider mb-1.5">Invite by email</p>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="email"
+                              value={editActionInviteEmail}
+                              onChange={(e) => setEditActionInviteEmail(e.target.value)}
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter' && editingAction) {
+                                  e.preventDefault()
+                                  const email = editActionInviteEmail.trim()
+                                  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
+                                  setEditActionInviting(true)
+                                  try {
+                                    await actionsApi.update(editingAction.id, { inviteEmails: [email] })
+                                    setEditActionInviteEmail('')
+                                    queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+                                    queryClient.invalidateQueries({ queryKey: ['command-center'] })
+                                  } catch { toast({ title: 'Failed to invite', variant: 'destructive' }) }
+                                  finally { setEditActionInviting(false) }
+                                }
+                              }}
+                              placeholder="email@example.com"
+                              className="flex-1 h-7 px-2 text-[12px] border border-[#e5e7eb] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#4648d4]"
+                            />
+                            <button
+                              type="button"
+                              disabled={editActionInviting}
+                              onClick={async () => {
+                                if (!editingAction) return
+                                const email = editActionInviteEmail.trim()
+                                if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
+                                setEditActionInviting(true)
+                                try {
+                                  await actionsApi.update(editingAction.id, { inviteEmails: [email] })
+                                  setEditActionInviteEmail('')
+                                  queryClient.invalidateQueries({ queryKey: ['initiative', initiativeId] })
+                                  queryClient.invalidateQueries({ queryKey: ['command-center'] })
+                                } catch { toast({ title: 'Failed to invite', variant: 'destructive' }) }
+                                finally { setEditActionInviting(false) }
+                              }}
+                              className="h-7 px-2.5 text-[11px] font-semibold bg-[#4648d4] text-white rounded-lg hover:bg-[#3730a3] disabled:opacity-40"
+                            >
+                              {editActionInviting ? '...' : 'Invite'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )
@@ -1813,7 +1913,7 @@ export default function CommandCenterPage() {
                                 {m.user?.emailVerified !== false && m.user?.email && <p className="text-[12px] text-[#9ca3af] truncate">{m.user.email}</p>}
                                 {m.department && !isEditing && <p className="text-[11px] text-[#9ca3af] mt-0.5">{m.department}</p>}
                               </div>
-                              <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', m.role === 'owner' ? 'bg-[#ede9fe] text-[#4648d4]' : m.role === 'admin' ? 'bg-[#eff6ff] text-[#2563eb]' : 'bg-[#f3f4f6] text-[#6b7280]')}>{m.role}</span>
+                              <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', m.role === 'owner' ? 'bg-[#fef3c7] text-[#d97706]' : m.role === 'admin' ? 'bg-[#eff6ff] text-[#2563eb]' : m.role === 'collaborator' ? 'bg-[#ede9fe] text-[#4648d4]' : 'bg-[#f3f4f6] text-[#6b7280]')}>{m.role}</span>
                               {m.user?.emailVerified === false && (
                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#fef9c3] text-[#a16207]">Not signed in</span>
                               )}
@@ -1828,7 +1928,7 @@ export default function CommandCenterPage() {
                                 <div>
                                   <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1">Role</p>
                                   <div className="flex gap-2">
-                                    {(['member', 'admin'] as const).map((r) => (
+                                    {(['admin', 'collaborator', 'member'] as const).map((r) => (
                                       <button key={r} type="button" onClick={() => setEditMemberRole(r)}
                                         className={cn('flex-1 h-7 text-[12px] font-semibold rounded-lg capitalize border transition-all', editMemberRole === r ? 'bg-[#4648d4] text-white border-[#4648d4]' : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:border-[#4648d4]/30')}
                                       >{r}</button>
@@ -1874,7 +1974,7 @@ export default function CommandCenterPage() {
                         <div>
                           <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-1.5">Role</p>
                           <div className="flex gap-2">
-                            {(['member', 'admin'] as const).map((r) => (
+                            {(['admin', 'collaborator', 'member'] as const).map((r) => (
                               <button key={r} type="button" onClick={() => setInviteRole(r)}
                                 className={cn('flex-1 h-8 text-[12px] font-semibold rounded-lg capitalize border transition-all', inviteRole === r ? 'bg-[#4648d4] text-white border-[#4648d4]' : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:border-[#4648d4]/30')}
                               >{r}</button>

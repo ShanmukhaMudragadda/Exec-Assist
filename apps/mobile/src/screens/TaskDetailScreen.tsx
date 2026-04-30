@@ -222,6 +222,7 @@ export default function TaskDetailScreen({ navigation, route }: Props) {
   const [editingDueDate, setEditingDueDate] = useState(false)
   const [dueDateDraft, setDueDateDraft] = useState('')
   const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
 
   const { data: taskData, isLoading: taskLoading } = useQuery({
     queryKey: ['task', taskId],
@@ -391,7 +392,8 @@ export default function TaskDetailScreen({ navigation, route }: Props) {
   const isSaving = updateMutation.isPending
   const myMember = members.find((m) => m.userId === currentUser?.id)
   const isAssignee = task.assignees.some((a) => a.userId === currentUser?.id)
-  const canEdit = !myMember || myMember.role !== 'member' || isAssignee || task.createdBy === currentUser?.id
+  // owner/admin: full edit; collaborator/member: only edit if assigned
+  const canEdit = !myMember || myMember.role === 'owner' || myMember.role === 'admin' || isAssignee
   const priorityColor = PRIORITY_COLORS[task.priority] || '#9ca3af'
   const statusColor = STATUS_COLORS[task.status] || '#9ca3af'
 
@@ -752,6 +754,39 @@ export default function TaskDetailScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               )
             })}
+
+            {/* Invite non-member by email */}
+            <View style={{ marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                Invite & Assign by Email
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={{ flex: 1, borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: '#0f172a', backgroundColor: '#f8fafc' }}
+                  value={inviteEmail}
+                  onChangeText={setInviteEmail}
+                  placeholder="email@example.com"
+                  placeholderTextColor="#cbd5e1"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={[{ backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, justifyContent: 'center' }, !inviteEmail.trim() && { backgroundColor: '#c7d2fe' }]}
+                  disabled={!inviteEmail.trim()}
+                  onPress={() => {
+                    if (!inviteEmail.trim()) return
+                    save({ inviteEmails: [inviteEmail.trim()] } as any)
+                    setInviteEmail('')
+                    setAssigneeDropdownOpen(false)
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>Invite</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                They'll be added as a Member and assigned to this task.
+              </Text>
+            </View>
           </ScrollView>
         </View>
       </Modal>

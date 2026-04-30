@@ -75,7 +75,7 @@ model InitiativeMember {
   id           String   @id @default(cuid())
   userId       String
   initiativeId String
-  role         String   @default("member") // owner | admin | member
+  role         String   @default("member") // owner | admin | collaborator | member
   department   String?  // Engineering | Sales | Presales | Consultant | Solution | etc.
   joinedAt     DateTime @default(now())
 
@@ -90,7 +90,7 @@ model InitiativeInvitation {
   email        String
   initiativeId String
   invitedBy    String
-  role         String   @default("member")
+  role         String   @default("member") // admin | collaborator | member
   department   String?
   status       String   @default("pending") // pending | joined
   createdAt    DateTime @default(now())

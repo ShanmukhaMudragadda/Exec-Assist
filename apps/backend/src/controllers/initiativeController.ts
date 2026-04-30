@@ -133,7 +133,16 @@ export const listInitiatives = async (req: AuthRequest, res: Response) => {
       const total = init._count.actions;
       const completed = completedMap.get(init.id) ?? 0;
       const computedProgress = total > 0 ? Math.round((completed / total) * 100) : init.progress;
-      return { ...init, progress: computedProgress, actionCount: total, completedActionCount: completed };
+
+      // 'member' role: restrict the action preview to only their assigned tasks
+      const userRole = init.createdBy === userId
+        ? 'owner'
+        : init.members.find((m) => m.userId === userId)?.role ?? null;
+      const actions = userRole === 'member'
+        ? init.actions.filter((a) => a.assignees.some((aa) => aa.user?.id === userId))
+        : init.actions;
+
+      return { ...init, actions, progress: computedProgress, actionCount: total, completedActionCount: completed };
     });
 
     return res.json({ initiatives: withProgress });
@@ -152,8 +161,8 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const PAGE = 50;
-    // All initiative members see all actions; edit rights are controlled separately
-    const memberFilter = {};
+    // 'member' role can only see actions they are assigned to; all others see everything
+    const memberFilter = role === 'member' ? { assignees: { some: { userId } } } : {};
 
     const now = new Date();
 
@@ -228,14 +237,18 @@ export const listActions = async (req: AuthRequest, res: Response) => {
 
     const now = new Date();
 
-    // All initiative members see all actions; edit rights are controlled separately
-    const accessCondition: object = { initiativeId };
+    // 'member' role can only see actions they are assigned to; all others see everything
+    const accessCondition: object = role === 'member'
+      ? { initiativeId, assignees: { some: { userId } } }
+      : { initiativeId };
 
+    // For 'member' role the accessCondition already scopes to assigned tasks,
+    // so 'mine' filter is redundant — skip it to avoid a duplicate clause.
     const filterCondition =
       filter === 'open'      ? { status: { notIn: ['completed'] } } :
       filter === 'completed' ? { status: 'completed' as const } :
       filter === 'overdue'   ? { dueDate: { lt: now }, status: { notIn: ['completed'] } } :
-      filter === 'mine'      ? { assignees: { some: { userId } } } :
+      (filter === 'mine' && role !== 'member') ? { assignees: { some: { userId } } } :
       null;
 
     const STATUS_LABELS: Record<string, string> = {
@@ -429,7 +442,7 @@ export const updateMember = async (req: AuthRequest, res: Response) => {
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can edit members' });
 
     const updateSchema = z.object({
-      role: z.enum(['admin', 'member']).optional(),
+      role: z.enum(['admin', 'collaborator', 'member']).optional(),
       department: z.string().optional().nullable(),
     });
     const data = updateSchema.parse(req.body);
@@ -506,7 +519,7 @@ export const removeMember = async (req: AuthRequest, res: Response) => {
 
 const addMemberSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['admin', 'member']).optional().default('member'),
+  role: z.enum(['admin', 'collaborator', 'member']).optional().default('collaborator'),
   department: z.string().optional().nullable(),
 });
 

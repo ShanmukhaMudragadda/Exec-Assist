@@ -65,17 +65,69 @@ async function canAccessAction(
   userId: string,
   action: { initiativeId: string | null; createdBy: string; assignees?: { userId: string }[] }
 ): Promise<{ ok: boolean; canModify: boolean; role: string | null }> {
-  const isCreator = action.createdBy === userId;
   const isAssignee = action.assignees?.some((a) => a.userId === userId) ?? false;
-  const isOwnerOrAssignee = isCreator || isAssignee;
 
   if (!action.initiativeId) {
-    return { ok: isOwnerOrAssignee, canModify: isOwnerOrAssignee, role: null };
+    const isCreator = action.createdBy === userId;
+    const canAccess = isCreator || isAssignee;
+    return { ok: canAccess, canModify: canAccess, role: null };
   }
   const { ok, role } = await canAccess(userId, action.initiativeId);
   if (!ok) return { ok: false, canModify: false, role: null };
-  // owners/admins can modify any action; members can only modify their own
-  return { ok: true, canModify: canEdit(role) || isOwnerOrAssignee, role };
+
+  if (canEdit(role)) return { ok: true, canModify: true, role };
+  // collaborator: sees all tasks, edits only assigned tasks
+  if (role === 'collaborator') return { ok: true, canModify: isAssignee, role };
+  // member: sees and edits only assigned tasks
+  if (role === 'member') return { ok: isAssignee, canModify: isAssignee, role };
+  return { ok: true, canModify: isAssignee, role };
+}
+
+// Add each email as initiative member (role: 'member') + action assignee.
+// Preserves existing higher roles — never downgrades owner/admin/collaborator.
+async function processInviteEmails(emails: string[], actionId: string, initiativeId: string, invitedByUserId: string) {
+  const { sendMemberAddedEmail } = await import('../services/emailService');
+  const [inviter, initiative] = await Promise.all([
+    prisma.user.findUnique({ where: { id: invitedByUserId }, select: { name: true } }),
+    prisma.initiative.findUnique({ where: { id: initiativeId }, select: { title: true } }),
+  ]);
+  const inviterName = inviter?.name ?? 'A teammate';
+  const initiativeTitle = initiative?.title ?? 'an initiative';
+
+  for (const email of emails) {
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const targetUser = existingUser ?? await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: { email, name: email.split('@')[0], emailVerified: false },
+    });
+
+    // Add to initiative as 'member'; don't overwrite an existing higher role
+    await (prisma.initiativeMember as any).upsert({
+      where: { userId_initiativeId: { userId: targetUser.id, initiativeId } },
+      update: {},
+      create: { userId: targetUser.id, initiativeId, role: 'member' },
+    });
+
+    // Assign to action (idempotent)
+    await (prisma.actionAssignee as any).upsert({
+      where: { actionId_userId: { actionId, userId: targetUser.id } },
+      update: {},
+      create: { actionId, userId: targetUser.id },
+    });
+
+    sendMemberAddedEmail(email, initiativeTitle, inviterName, initiativeId)
+      .catch((err: unknown) => console.error('[invite] member added email failed:', err));
+
+    if (existingUser?.pushNotificationsEnabled) {
+      sendPushNotification(existingUser.id, {
+        title: 'Added to Initiative',
+        body: `${inviterName} added you to "${initiativeTitle}"`,
+        url: `/initiatives/${initiativeId}`,
+        tag: `member-added-${initiativeId}`,
+      }).catch((err) => console.error('[push] invite push failed:', err));
+    }
+  }
 }
 
 const ASSIGNEES_INCLUDE = {
@@ -95,6 +147,7 @@ const createSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().nullable(),
   assigneeIds: z.array(z.string()).optional().default([]),
+  inviteEmails: z.array(z.string().email()).optional().default([]),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().default('medium'),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional().default('todo'),
   dueDate: z.string().optional().nullable(),
@@ -108,6 +161,7 @@ const updateSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
   assigneeIds: z.array(z.string()).optional().nullable(),
+  inviteEmails: z.array(z.string().email()).optional().default([]),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   status: z.enum(['todo', 'in-progress', 'in-review', 'completed']).optional(),
   dueDate: z.string().optional().nullable(),
@@ -195,6 +249,11 @@ export const createAction = async (req: AuthRequest, res: Response) => {
           }).catch((err) => console.error('[push] action assign push failed:', err));
         }
       }
+    }
+
+    // Invite non-members by email: add them to initiative as 'member', assign to this action
+    if (data.inviteEmails?.length && action.initiativeId) {
+      await processInviteEmails(data.inviteEmails, action.id, action.initiativeId, userId);
     }
 
     logAudit({
@@ -489,11 +548,18 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
       };
     }
 
-    const updated = await prisma.action.update({
+    let updated = await prisma.action.update({
       where: { id: actionId },
       data: scalarUpdate,
       include: ACTION_INCLUDE,
     });
+
+    // Invite non-members by email: add them to initiative as 'member', assign to this action
+    if (data.inviteEmails?.length && updated.initiativeId) {
+      await processInviteEmails(data.inviteEmails, actionId, updated.initiativeId, userId);
+      const refetched = await prisma.action.findUnique({ where: { id: actionId }, include: ACTION_INCLUDE });
+      if (refetched) updated = refetched;
+    }
 
     // Notify newly added assignees (skip if self-assigned or was already assigned)
     if (data.assigneeIds !== undefined && data.assigneeIds !== null) {
@@ -617,25 +683,26 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
     const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 100);
 
-    // All initiatives the user owns or is a member of
-    const userInitiatives = await prisma.initiative.findMany({
-      where: {
-        OR: [
-          { createdBy: userId },
-          { members: { some: { userId } } },
-        ],
-      },
-      select: { id: true },
-    });
-    const initiativeIds = userInitiatives.map((i) => i.id);
+    // Fetch created initiatives + memberships with roles to enforce per-role visibility
+    const [ownedInitiatives, memberships] = await Promise.all([
+      prisma.initiative.findMany({ where: { createdBy: userId }, select: { id: true } }),
+      prisma.initiativeMember.findMany({ where: { userId }, select: { initiativeId: true, role: true } }),
+    ]);
+
+    // Broad access: user is owner (created) | admin | collaborator — can see all tasks
+    // Member role: only assigned tasks (covered by assignees.some clause)
+    const broadAccessIds = [...new Set([
+      ...ownedInitiatives.map((i) => i.id),
+      ...memberships.filter((m) => m.role !== 'member').map((m) => m.initiativeId),
+    ])];
 
     const now = new Date();
 
     const accessCondition = {
       OR: [
-        { assignees: { some: { userId } } },
-        { createdBy: userId },
-        ...(initiativeIds.length ? [{ initiativeId: { in: initiativeIds } }] : []),
+        { assignees: { some: { userId } } },           // Assigned in any initiative (covers 'member' role)
+        { initiativeId: null, createdBy: userId },      // Own standalone actions only
+        ...(broadAccessIds.length ? [{ initiativeId: { in: broadAccessIds } }] : []),
       ],
     };
 

@@ -58,6 +58,8 @@ export default function ActionDetailPage() {
   const mentionBoxRef = useRef<HTMLDivElement>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
 
   // Inline edit state
   const [editTitle, setEditTitle] = useState(false)
@@ -232,7 +234,8 @@ export default function ActionDetailPage() {
   const isOwnerOrAdmin = userMemberRole === 'owner' || userMemberRole === 'admin'
   const currentAssignees: { id: string; name: string; avatar?: string | null }[] =
     action.assignees?.map((a: any) => a.user ?? a) || []
-  const canEdit = isOwnerOrAdmin || action.createdBy === user?.id || currentAssignees.some((a) => a.id === user?.id)
+  // owner/admin: full edit; collaborator/member: only edit if assigned to this action
+  const canEdit = isOwnerOrAdmin || currentAssignees.some((a) => a.id === user?.id)
 
   // All assignable people
   const allAssignees = initiative ? [
@@ -679,7 +682,7 @@ export default function ActionDetailPage() {
                       <span className="text-[13px] text-[#9ca3af]">Unassigned</span>
                     )}
                     {showAssigneeDropdown && (
-                      <div className="absolute top-full right-0 mt-1 bg-white border border-[#e5e7eb] rounded-xl shadow-xl z-50 min-w-[200px] py-1 overflow-hidden">
+                      <div className="absolute top-full right-0 mt-1 bg-white border border-[#e5e7eb] rounded-xl shadow-xl z-50 min-w-[220px] py-1 overflow-hidden">
                         <div className="px-3 py-1.5 text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider border-b border-[#f3f4f6]">Click to toggle assignees</div>
                         {allAssignees.map((a: any) => {
                           const isAssigned = currentAssignees.some((x) => x.id === a.id)
@@ -699,6 +702,36 @@ export default function ActionDetailPage() {
                             </button>
                           )
                         })}
+                        {/* Invite non-member by email */}
+                        <div className="px-3 pt-2 pb-3 border-t border-[#f3f4f6] mt-1">
+                          <p className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider mb-1.5">Invite & Assign</p>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="email"
+                              placeholder="email@example.com"
+                              value={inviteEmail}
+                              onChange={(e) => setInviteEmail(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              className="flex-1 h-7 px-2 bg-[#f3f4f6] rounded-lg text-[12px] text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/20 placeholder:text-[#9ca3af]"
+                            />
+                            <button
+                              disabled={!inviteEmail.trim() || inviting}
+                              onClick={async () => {
+                                if (!inviteEmail.trim()) return
+                                setInviting(true)
+                                try {
+                                  await handleUpdate({ inviteEmails: [inviteEmail.trim()] })
+                                  setInviteEmail('')
+                                  setShowAssigneeDropdown(false)
+                                } finally { setInviting(false) }
+                              }}
+                              className="px-2.5 py-1 bg-[#4648d4] text-white text-[11px] font-semibold rounded-lg hover:bg-[#3730a3] disabled:opacity-40 transition-colors"
+                            >
+                              {inviting ? '...' : 'Invite'}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-[#9ca3af] mt-1">Added as Member, assigned to this task.</p>
+                        </div>
                       </div>
                     )}
                   </div>

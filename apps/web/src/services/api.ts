@@ -99,7 +99,7 @@ export const tagsApi = {
 export const actionsApi = {
   create: (initiativeId: string, data: {
     title: string; description?: string; priority?: string; status?: string;
-    dueDate?: string | null; assigneeIds?: string[];
+    dueDate?: string | null; assigneeIds?: string[]; inviteEmails?: string[];
     sourceType?: string; sourceId?: string; tagIds?: string[];
   }) => api.post(`/initiatives/${initiativeId}/actions`, data),
   createStandalone: (data: {
@@ -119,7 +119,7 @@ export const actionsApi = {
   update: (actionId: string, data: Partial<{
     title: string; description: string | null; status: string; priority: string;
     dueDate: string | null; assigneeIds: string[] | null; tagIds: string[];
-    initiativeId: string | null;
+    initiativeId: string | null; inviteEmails: string[];
   }>) => api.patch(`/actions/${actionId}`, data),
   delete: (actionId: string) => api.delete(`/actions/${actionId}`),
   bulkUpdate: (actionIds: string[], update: { status?: string; priority?: string; assigneeIds?: string[] | null; dueDate?: string | null }) =>

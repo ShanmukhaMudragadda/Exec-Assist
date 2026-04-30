@@ -100,7 +100,17 @@
       "Bash(rm:*)",
       "Bash(PRISMA_DISABLE_WARNINGS=true npx prisma db push)",
       "Bash(curl:*)",
-      "Bash(pm2 list:*)"
+      "Bash(pm2 list:*)",
+      "mcp__japex-mcp__list_projects",
+      "mcp__japex-mcp__list_tasks",
+      "mcp__japex-mcp__create_task",
+      "mcp__japex-mcp__implement_task",
+      "mcp__japex-mcp__plan_task",
+      "mcp__japex-mcp__execute_task",
+      "mcp__japex-mcp__test_task",
+      "Bash(npx ts-node *)",
+      "mcp__japex-mcp__review_task",
+      "Bash(2>&1)"
     ]
   }
 }
