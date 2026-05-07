@@ -129,20 +129,20 @@ export default function DashboardPage() {
 
           {/* Stat strip */}
           <div className="flex items-center gap-3.5 mt-1 flex-wrap">
-            <div className="text-right">
+            <Link to="/command-center?filter=open" className="text-right px-2 py-1 rounded-lg hover:bg-[#f3f4f6] transition-colors cursor-pointer">
               <p className="text-[24px] font-bold text-[#111827] tabular-nums leading-none">{openCount}</p>
               <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-1">Open</p>
-            </div>
+            </Link>
             {overdueCount > 0 && (
-              <div className="text-right">
+              <Link to="/command-center?filter=overdue" className="text-right px-2 py-1 rounded-lg hover:bg-[#fee2e2] transition-colors cursor-pointer">
                 <p className="text-[24px] font-bold text-[#dc2626] tabular-nums leading-none">{overdueCount}</p>
                 <p className="text-[11px] text-[#dc2626] uppercase tracking-wider font-semibold mt-1">Overdue</p>
-              </div>
+              </Link>
             )}
-            <div className="text-right">
+            <Link to="/initiatives" className="text-right px-2 py-1 rounded-lg hover:bg-[#ede9fe] transition-colors cursor-pointer">
               <p className="text-[24px] font-bold text-[#4648d4] tabular-nums leading-none">{allInitiatives.length}</p>
               <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-1">Initiatives</p>
-            </div>
+            </Link>
           </div>
         </div>
 

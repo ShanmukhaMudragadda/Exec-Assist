@@ -127,8 +127,13 @@ export default function CommandCenterPage() {
   const queryClient = useQueryClient()
   const now = new Date()
 
+  const VALID_FILTERS: ActionFilter[] = ['all', 'open', 'overdue', 'completed', 'mine']
+  const urlFilter = searchParams.get('filter') as ActionFilter | null
+
   // UI state
-  const [actionFilter, setActionFilter] = useState<ActionFilter>('mine')
+  const [actionFilter, setActionFilter] = useState<ActionFilter>(
+    urlFilter && VALID_FILTERS.includes(urlFilter) ? urlFilter : 'mine'
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
@@ -207,7 +212,8 @@ export default function CommandCenterPage() {
   useEffect(() => {
     setSearchQuery('')
     setTagFilter(null)
-    setActionFilter('mine')
+    const paramFilter = searchParams.get('filter') as ActionFilter | null
+    setActionFilter(paramFilter && VALID_FILTERS.includes(paramFilter) ? paramFilter : 'mine')
     setExtraActions([])
     setActionsCursor(null)
     setHasMoreActions(false)
@@ -217,7 +223,7 @@ export default function CommandCenterPage() {
     if (!initiativeId) {
       queryClient.removeQueries({ queryKey: ['command-center'] })
     }
-  }, [initiativeId])
+  }, [initiativeId, searchParams.get('filter')])
 
   useEffect(() => {
     const handle = (e: MouseEvent) => {
@@ -306,7 +312,7 @@ export default function CommandCenterPage() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
   const ccMeta = (ccData as any)?.meta as { total: number; hasMore: boolean; nextCursor: string | null } | undefined
-  const ccStats = (ccData as any)?.stats as { all: number; open: number; overdue: number; completed: number } | undefined
+  const ccStats = (ccData as any)?.stats as { all: number; open: number; overdue: number; completed: number; mine: number } | undefined
 
   const baseActions: Action[] = initiativeId
     ? [...(initiative?.actions || []), ...extraActions]
@@ -716,9 +722,8 @@ export default function CommandCenterPage() {
               const label = f === 'all' ? 'All' : f === 'open' ? 'Open' : f === 'overdue' ? 'Overdue' : f === 'mine' ? 'Mine' : 'Done'
               if (!initiativeId) {
                 // CC mode: use server-returned stats so all tabs show counts upfront
-                const ccStatsExt = ccStats as any
-                const count = ccStatsExt
-                  ? f === 'all' ? ccStatsExt.all : f === 'open' ? ccStatsExt.open : f === 'overdue' ? ccStatsExt.overdue : f === 'mine' ? ccStatsExt.mine : ccStatsExt.completed
+                const count = ccStats
+                  ? f === 'all' ? ccStats.all : f === 'open' ? ccStats.open : f === 'overdue' ? ccStats.overdue : f === 'mine' ? ccStats.mine : ccStats.completed
                   : null
                 return count != null ? `${label} (${count})` : label
               }
@@ -1182,7 +1187,7 @@ export default function CommandCenterPage() {
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Overdue</p>
                     </div>
                     <div>
-                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === user?.id) && a.status !== 'completed').length}</p>
+                      <p className="text-[22px] font-bold text-[#4648d4] tabular-nums leading-none">{ccStats != null ? (ccStats as any).mine : baseActions.filter((a) => a.assignees?.some((aa) => aa.user.id === user?.id)).length}</p>
                       <p className="text-[11px] text-[#9ca3af] uppercase tracking-widest font-semibold mt-1.5">Mine</p>
                     </div>
                   </>
