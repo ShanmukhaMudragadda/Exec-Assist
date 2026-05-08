@@ -10,6 +10,7 @@ export interface User {
   emailNotifications: boolean
   dailyReportTime?: string | null
   createdAt?: string
+  featureFlags?: { feature: string; enabled: boolean }[]
 }
 
 // ─── Workspace ───────────────────────────────────────────────────────────────

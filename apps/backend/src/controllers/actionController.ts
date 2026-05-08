@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { AuthRequest } from '../middleware/auth';
+import { isSuperAdmin } from '../middleware/superAdmin';
 import { sendMentionNotificationEmail } from '../services/emailService';
 import { queueActionAssignmentEmail } from '../queue/emailQueue';
 import { sendPushNotification } from '../services/pushService';
@@ -46,9 +47,10 @@ async function notifyMentions(content: string, posterId: string, actionId: strin
 
 const prisma = new PrismaClient();
 
-async function canAccess(userId: string, initiativeId: string): Promise<{ ok: boolean; role: string | null }> {
+async function canAccess(userId: string, initiativeId: string, callerRole?: string): Promise<{ ok: boolean; role: string | null }> {
   const initiative = await prisma.initiative.findUnique({ where: { id: initiativeId }, select: { createdBy: true } });
   if (!initiative) return { ok: false, role: null };
+  if (callerRole === 'superadmin') return { ok: true, role: 'owner' };
   if (initiative.createdBy === userId) return { ok: true, role: 'owner' };
   const member = await prisma.initiativeMember.findUnique({
     where: { userId_initiativeId: { userId, initiativeId } },
@@ -63,8 +65,11 @@ function canEdit(role: string | null) {
 // For actions that may have no initiative (standalone), check access at action level
 async function canAccessAction(
   userId: string,
-  action: { initiativeId: string | null; createdBy: string; assignees?: { userId: string }[] }
+  action: { initiativeId: string | null; createdBy: string; assignees?: { userId: string }[] },
+  callerRole?: string
 ): Promise<{ ok: boolean; canModify: boolean; role: string | null }> {
+  if (callerRole === 'superadmin') return { ok: true, canModify: true, role: 'owner' };
+
   const isAssignee = action.assignees?.some((a) => a.userId === userId) ?? false;
 
   if (!action.initiativeId) {
@@ -72,7 +77,7 @@ async function canAccessAction(
     const canAccess = isCreator || isAssignee;
     return { ok: canAccess, canModify: canAccess, role: null };
   }
-  const { ok, role } = await canAccess(userId, action.initiativeId);
+  const { ok, role } = await canAccess(userId, action.initiativeId, callerRole);
   if (!ok) return { ok: false, canModify: false, role: null };
 
   if (canEdit(role)) return { ok: true, canModify: true, role };
@@ -206,7 +211,7 @@ export const createAction = async (req: AuthRequest, res: Response) => {
     const data = createSchema.parse(req.body);
     const initiativeId = paramInitiativeId || data.initiativeId || null;
 
-    if (initiativeId && !(await canAccess(userId, initiativeId)).ok) {
+    if (initiativeId && !(await canAccess(userId, initiativeId, req.user?.role)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -280,7 +285,7 @@ export const bulkCreateActions = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const items = bulkCreateSchema.parse(req.body.actions);
 
-    if (!(await canAccess(userId, initiativeId)).ok) {
+    if (!(await canAccess(userId, initiativeId, req.user?.role)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -389,26 +394,30 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
       select: { id: true, createdBy: true, initiativeId: true, assignees: { select: { userId: true } } },
     });
 
-    const userInitiatives = await prisma.initiative.findMany({
-      where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
-      select: { id: true },
-    });
-    const initiativeIds = new Set(userInitiatives.map((i) => i.id));
-
-    const accessibleIds = actions
-      .filter(
-        (a) =>
-          a.assignees.some((aa) => aa.userId === userId) ||
-          a.createdBy === userId ||
-          (a.initiativeId && initiativeIds.has(a.initiativeId))
-      )
-      .map((a) => a.id);
+    let accessibleIds: string[];
+    if (isSuperAdmin(req)) {
+      accessibleIds = actions.map((a) => a.id);
+    } else {
+      const userInitiatives = await prisma.initiative.findMany({
+        where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
+        select: { id: true },
+      });
+      const initiativeIds = new Set(userInitiatives.map((i) => i.id));
+      accessibleIds = actions
+        .filter(
+          (a) =>
+            a.assignees.some((aa) => aa.userId === userId) ||
+            a.createdBy === userId ||
+            (a.initiativeId && initiativeIds.has(a.initiativeId))
+        )
+        .map((a) => a.id);
+    }
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
 
     // If moving to a new initiative, verify the user has access to it
     if (update.initiativeId) {
-      const { ok } = await canAccess(userId, update.initiativeId);
+      const { ok } = await canAccess(userId, update.initiativeId, req.user?.role);
       if (!ok) return res.status(403).json({ error: 'Access denied to target initiative' });
     }
 
@@ -464,20 +473,24 @@ export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
       select: { id: true, createdBy: true, initiativeId: true, assignees: { select: { userId: true } } },
     });
 
-    const userInitiatives = await prisma.initiative.findMany({
-      where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
-      select: { id: true },
-    });
-    const initiativeIds = new Set(userInitiatives.map((i) => i.id));
-
-    const accessibleIds = actions
-      .filter(
-        (a) =>
-          a.assignees.some((aa) => aa.userId === userId) ||
-          a.createdBy === userId ||
-          (a.initiativeId && initiativeIds.has(a.initiativeId))
-      )
-      .map((a) => a.id);
+    let accessibleIds: string[];
+    if (isSuperAdmin(req)) {
+      accessibleIds = actions.map((a) => a.id);
+    } else {
+      const userInitiatives = await prisma.initiative.findMany({
+        where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
+        select: { id: true },
+      });
+      const initiativeIds = new Set(userInitiatives.map((i) => i.id));
+      accessibleIds = actions
+        .filter(
+          (a) =>
+            a.assignees.some((aa) => aa.userId === userId) ||
+            a.createdBy === userId ||
+            (a.initiativeId && initiativeIds.has(a.initiativeId))
+        )
+        .map((a) => a.id);
+    }
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
 
@@ -512,14 +525,14 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
     if (!action) return res.status(404).json({ error: 'Action not found' });
     const previousAssigneeIds = action.assignees.map((a) => a.userId);
 
-    const { ok, canModify } = await canAccessAction(userId, action);
+    const { ok, canModify } = await canAccessAction(userId, action, req.user?.role);
     if (!ok || !canModify) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // If moving to a new initiative, verify access to the target initiative
     if (data.initiativeId && data.initiativeId !== action.initiativeId) {
-      if (!(await canAccess(userId, data.initiativeId)).ok) {
+      if (!(await canAccess(userId, data.initiativeId, req.user?.role)).ok) {
         return res.status(403).json({ error: 'Access denied to target initiative' });
       }
     }
@@ -642,17 +655,19 @@ export const deleteAction = async (req: AuthRequest, res: Response) => {
     });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    if (action.initiativeId) {
-      const { ok, role } = await canAccess(userId, action.initiativeId);
-      if (!ok) return res.status(403).json({ error: 'Access denied' });
-      // owners/admins can delete any action; members can only delete actions they created
-      if (!canEdit(role) && action.createdBy !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    } else {
-      // Standalone action: only the creator can delete
-      if (action.createdBy !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
+    if (!isSuperAdmin(req)) {
+      if (action.initiativeId) {
+        const { ok, role } = await canAccess(userId, action.initiativeId);
+        if (!ok) return res.status(403).json({ error: 'Access denied' });
+        // owners/admins can delete any action; members can only delete actions they created
+        if (!canEdit(role) && action.createdBy !== userId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      } else {
+        // Standalone action: only the creator can delete
+        if (action.createdBy !== userId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
       }
     }
 
@@ -683,28 +698,35 @@ export const getCommandCenter = async (req: AuthRequest, res: Response) => {
     const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 100);
 
-    // Fetch created initiatives + memberships with roles to enforce per-role visibility
-    const [ownedInitiatives, memberships] = await Promise.all([
-      prisma.initiative.findMany({ where: { createdBy: userId }, select: { id: true } }),
-      prisma.initiativeMember.findMany({ where: { userId }, select: { initiativeId: true, role: true } }),
-    ]);
-
-    // Broad access: user is owner (created) | admin | collaborator — can see all tasks
-    // Member role: only assigned tasks (covered by assignees.some clause)
-    const broadAccessIds = [...new Set([
-      ...ownedInitiatives.map((i) => i.id),
-      ...memberships.filter((m) => m.role !== 'member').map((m) => m.initiativeId),
-    ])];
-
     const now = new Date();
+    const superAdmin = isSuperAdmin(req);
 
-    const accessCondition = {
-      OR: [
-        { assignees: { some: { userId } } },           // Assigned in any initiative (covers 'member' role)
-        { initiativeId: null, createdBy: userId },      // Own standalone actions only
-        ...(broadAccessIds.length ? [{ initiativeId: { in: broadAccessIds } }] : []),
-      ],
-    };
+    // Super-admin sees all actions; others are restricted by membership/assignment
+    let accessCondition: object;
+    if (superAdmin) {
+      accessCondition = {}; // no filter — all actions visible
+    } else {
+      // Fetch created initiatives + memberships with roles to enforce per-role visibility
+      const [ownedInitiatives, memberships] = await Promise.all([
+        prisma.initiative.findMany({ where: { createdBy: userId }, select: { id: true } }),
+        prisma.initiativeMember.findMany({ where: { userId }, select: { initiativeId: true, role: true } }),
+      ]);
+
+      // Broad access: user is owner (created) | admin | collaborator — can see all tasks
+      // Member role: only assigned tasks (covered by assignees.some clause)
+      const broadAccessIds = [...new Set([
+        ...ownedInitiatives.map((i) => i.id),
+        ...memberships.filter((m) => m.role !== 'member').map((m) => m.initiativeId),
+      ])];
+
+      accessCondition = {
+        OR: [
+          { assignees: { some: { userId } } },           // Assigned in any initiative (covers 'member' role)
+          { initiativeId: null, createdBy: userId },      // Own standalone actions only
+          ...(broadAccessIds.length ? [{ initiativeId: { in: broadAccessIds } }] : []),
+        ],
+      };
+    }
 
     const filterCondition =
       filter === 'open'      ? { status: { notIn: ['completed'] } } :
@@ -802,7 +824,7 @@ export const generateActionsFromTranscript = async (req: AuthRequest, res: Respo
       };
     };
 
-    if (!(await canAccess(userId, initiativeId)).ok) {
+    if (!(await canAccess(userId, initiativeId, req.user?.role)).ok) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -975,7 +997,7 @@ export const generateActionsFromSheet = async (req: AuthRequest, res: Response) 
 
     // Fetch members so AI can match assignee names to real users
     let membersList: { id: string; name: string; profile?: string }[] = [];
-    if (initiativeId && (await canAccess(userId, initiativeId)).ok) {
+    if (initiativeId && (await canAccess(userId, initiativeId, req.user?.role)).ok) {
       const members = await prisma.initiativeMember.findMany({
         where: { initiativeId },
         include: { user: { select: { id: true, name: true } } },
@@ -1078,7 +1100,7 @@ export const getAction = async (req: AuthRequest, res: Response) => {
 
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    const { ok: canView } = await canAccessAction(userId, action);
+    const { ok: canView } = await canAccessAction(userId, action, req.user?.role);
     if (!canView) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -1104,7 +1126,7 @@ export const createActionUpdate = async (req: AuthRequest, res: Response) => {
     });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    const { ok: canView } = await canAccessAction(userId, action);
+    const { ok: canView } = await canAccessAction(userId, action, req.user?.role);
     if (!canView) {
       return res.status(403).json({ error: 'Access denied' });
     }

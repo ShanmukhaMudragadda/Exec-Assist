@@ -66,6 +66,8 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
     // Find or create user
     let user = await prisma.user.findUnique({ where: { email } });
 
+    const isSuperAdminEmail = email === process.env.SUPER_ADMIN_EMAIL;
+
     let isNew = false;
     if (!user) {
       isNew = true;
@@ -76,6 +78,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
           googleId,
           avatar: picture || null,
           emailVerified: email_verified ?? false,
+          ...(isSuperAdminEmail ? { role: 'superadmin' } : {}),
         },
       });
     } else {
@@ -86,6 +89,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
           googleId: googleId || user.googleId,
           avatar: picture || user.avatar,
           emailVerified: true,
+          ...(isSuperAdminEmail && user.role !== 'superadmin' ? { role: 'superadmin' } : {}),
         },
       });
     }
@@ -111,6 +115,12 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       );
     }
 
+    // Fetch feature flags for the response
+    const featureFlags = await prisma.userFeatureFlag.findMany({
+      where: { userId: user.id },
+      select: { feature: true, enabled: true },
+    });
+
     console.log('[googleAuth] user.avatar after save:', user.avatar);
     const token = generateToken({ id: user.id, email: user.email, role: user.role });
 
@@ -132,6 +142,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
         emailVerified: user.emailVerified,
         avatar: user.avatar,
         pushNotificationsEnabled: user.pushNotificationsEnabled,
+        featureFlags,
       },
       token,
     });
@@ -152,6 +163,7 @@ export const getMe = async (
       select: {
         id: true, email: true, name: true, role: true, emailVerified: true,
         avatar: true, timezone: true, createdAt: true, pushNotificationsEnabled: true,
+        featureFlags: { select: { feature: true, enabled: true } },
       },
     });
 

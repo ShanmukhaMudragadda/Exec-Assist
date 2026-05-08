@@ -6,6 +6,7 @@ import { format, isBefore, differenceInDays, isValid } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi, actionsApi, membersApi, initiativeSettingsApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin'
 import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
 
@@ -123,6 +124,7 @@ export default function CommandCenterPage() {
   const [searchParams] = useSearchParams()
   const initiativeId = searchParams.get('initiativeId')
   const { user } = useAuthStore()
+  const isSuperAdmin = useIsSuperAdmin()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const now = new Date()
@@ -324,7 +326,7 @@ export default function CommandCenterPage() {
   const userRole = initiative?.creator?.id === user?.id
     ? 'owner'
     : members.find((m) => m.user.id === user?.id)?.role ?? 'member'
-  const isOwnerOrAdmin = userRole === 'owner' || userRole === 'admin'
+  const isOwnerOrAdmin = isSuperAdmin || userRole === 'owner' || userRole === 'admin'
   const daysRemaining = initiative?.dueDate ? differenceInDays(new Date(initiative.dueDate), now) : null
   const progressColor = initiative?.status === 'at-risk' ? '#dc2626' : '#4648d4'
 

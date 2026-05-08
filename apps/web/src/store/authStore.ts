@@ -11,6 +11,7 @@ interface User {
   emailNotifications: boolean
   pushNotificationsEnabled?: boolean
   dailyReportTime?: string | null
+  featureFlags?: { feature: string; enabled: boolean }[]
 }
 
 interface AuthState {

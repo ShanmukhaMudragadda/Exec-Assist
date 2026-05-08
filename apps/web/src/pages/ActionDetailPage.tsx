@@ -5,6 +5,7 @@ import { format, isBefore, formatDistanceToNow } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { actionsApi, initiativesApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin'
 import { cn } from '@/lib/utils'
 
 
@@ -43,6 +44,7 @@ function Avatar({ name, avatar, size = 'sm' }: { name?: string; avatar?: string 
 export default function ActionDetailPage() {
   const { initiativeId, actionId } = useParams<{ initiativeId: string; actionId: string }>()
   const { user } = useAuthStore()
+  const isSuperAdmin = useIsSuperAdmin()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const commentRef = useRef<HTMLTextAreaElement>(null)
@@ -231,7 +233,7 @@ export default function ActionDetailPage() {
   const userMemberRole = initiative
     ? (initiative.creator?.id === user?.id ? 'owner' : (members.find((m: any) => m.userId === user?.id)?.role ?? 'member'))
     : 'owner'
-  const isOwnerOrAdmin = userMemberRole === 'owner' || userMemberRole === 'admin'
+  const isOwnerOrAdmin = isSuperAdmin || userMemberRole === 'owner' || userMemberRole === 'admin'
   const currentAssignees: { id: string; name: string; avatar?: string | null }[] =
     action.assignees?.map((a: any) => a.user ?? a) || []
   // owner/admin: full edit; collaborator/member: only edit if assigned to this action

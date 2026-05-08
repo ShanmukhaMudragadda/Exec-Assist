@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin'
+import { useFeatureFlag } from '@/hooks/useFeatureFlag'
 import { cn } from '@/lib/utils'
 
 interface AppLayoutProps {
@@ -18,15 +20,22 @@ export default function AppLayout({ children }: AppLayoutProps) {
     navigate('/auth/login')
   }
 
+  const isSuperAdmin = useIsSuperAdmin()
+  const hasEltFlag = useFeatureFlag('elt_dashboard')
+
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/'
   const isInitiatives = location.pathname.startsWith('/initiatives')
   const isCommandCenter = location.pathname.startsWith('/command-center')
+  const isEltDashboard = location.pathname.startsWith('/elt-dashboard')
+  const isAdmin = location.pathname.startsWith('/admin')
   const userInitials = user?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
 
   const navItems = [
     { icon: 'space_dashboard', label: 'Dashboard', to: '/dashboard', active: isDashboard },
     { icon: 'rocket_launch', label: 'Initiatives', to: '/initiatives', active: isInitiatives },
     { icon: 'layers', label: 'Command Center', to: '/command-center', active: isCommandCenter },
+    ...(hasEltFlag || isSuperAdmin ? [{ icon: 'bar_chart_4_bars', label: 'ELT Dashboard', to: '/elt-dashboard', active: isEltDashboard }] : []),
+    ...(isSuperAdmin ? [{ icon: 'shield_person', label: 'Admin', to: '/admin', active: isAdmin }] : []),
   ]
 
   return (
@@ -86,7 +95,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             )}
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-semibold text-white/90 truncate leading-tight">{user?.name}</div>
-              <div className="text-[11px] text-[#4b5563] truncate capitalize">{user?.role || 'Executive'}</div>
+              <div className="text-[11px] text-[#4b5563] truncate capitalize">{user?.role === 'superadmin' ? 'Super Admin' : (user?.role || 'Executive')}</div>
             </div>
           </div>
           <Link

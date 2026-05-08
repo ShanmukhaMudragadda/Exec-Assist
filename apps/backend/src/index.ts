@@ -14,6 +14,7 @@ import userRoutes from './routes/userRoutes';
 import initiativeRoutes from './routes/initiativeRoutes';
 import transcriptRoutes from './routes/transcriptRoutes';
 import pushRoutes from './routes/pushRoutes';
+import adminRoutes from './routes/adminRoutes';
 import { errorHandler } from './middleware/errorHandler';
 import { scheduleDailyReports, checkMissedDigests } from './queue/emailQueue';
 import { initWebPush } from './services/pushService';
@@ -68,6 +69,7 @@ app.use('/users', userRoutes);
 app.use('/', initiativeRoutes);
 app.use('/', transcriptRoutes);
 app.use('/push', pushRoutes);
+app.use('/', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

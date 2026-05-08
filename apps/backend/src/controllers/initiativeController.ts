@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { isSuperAdmin } from '../middleware/superAdmin';
 import { sendPushNotification } from '../services/pushService';
 import { logAudit } from '../services/auditService';
 import { sendInitiativeDailyDigest } from '../queue/emailQueue';
@@ -10,12 +11,13 @@ const prisma = new PrismaClient();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-async function canAccess(userId: string, initiativeId: string) {
+async function canAccess(userId: string, initiativeId: string, callerRole?: string) {
   const initiative = await prisma.initiative.findUnique({
     where: { id: initiativeId },
     select: { createdBy: true, title: true },
   });
   if (!initiative) return { ok: false, initiative: null, role: null };
+  if (callerRole === 'superadmin') return { ok: true, initiative, role: 'owner' };
   if (initiative.createdBy === userId) return { ok: true, initiative, role: 'owner' };
   const member = await prisma.initiativeMember.findUnique({
     where: { userId_initiativeId: { userId, initiativeId } },
@@ -91,10 +93,11 @@ export const createInitiative = async (req: AuthRequest, res: Response) => {
 export const listInitiatives = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
+    const superAdmin = isSuperAdmin(req);
 
-    // Get all initiatives the user created or is a member of
+    // Super-admin sees all initiatives; others see only their own or membered ones
     const initiatives = await prisma.initiative.findMany({
-      where: {
+      where: superAdmin ? undefined : {
         OR: [
           { createdBy: userId },
           { members: { some: { userId } } },
@@ -135,9 +138,11 @@ export const listInitiatives = async (req: AuthRequest, res: Response) => {
       const computedProgress = total > 0 ? Math.round((completed / total) * 100) : init.progress;
 
       // 'member' role: restrict the action preview to only their assigned tasks
-      const userRole = init.createdBy === userId
+      const userRole = superAdmin
         ? 'owner'
-        : init.members.find((m) => m.userId === userId)?.role ?? null;
+        : init.createdBy === userId
+          ? 'owner'
+          : init.members.find((m) => m.userId === userId)?.role ?? null;
       const actions = userRole === 'member'
         ? init.actions.filter((a) => a.assignees.some((aa) => aa.user?.id === userId))
         : init.actions;
@@ -157,7 +162,7 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const PAGE = 50;
@@ -232,7 +237,7 @@ export const listActions = async (req: AuthRequest, res: Response) => {
     const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string || '25', 10), 100);
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const now = new Date();
@@ -309,7 +314,7 @@ export const updateInitiative = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = updateSchema.parse(req.body);
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can edit the initiative' });
 
@@ -373,7 +378,7 @@ export const deleteInitiative = async (req: AuthRequest, res: Response) => {
 
     const initiative = await prisma.initiative.findUnique({ where: { id: initiativeId } });
     if (!initiative) return res.status(404).json({ error: 'Initiative not found' });
-    if (initiative.createdBy !== userId) return res.status(403).json({ error: 'Only the creator can delete' });
+    if (initiative.createdBy !== userId && !isSuperAdmin(req)) return res.status(403).json({ error: 'Only the creator can delete' });
 
     // Fetch members to notify before cascade delete removes them
     const membersToNotify = await prisma.initiativeMember.findMany({
@@ -418,7 +423,7 @@ export const listMembers = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const members = await prisma.initiativeMember.findMany({
@@ -437,7 +442,7 @@ export const updateMember = async (req: AuthRequest, res: Response) => {
     const { initiativeId, memberId } = req.params;
     const userId = req.user!.id;
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can edit members' });
 
@@ -529,7 +534,7 @@ export const addMember = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = addMemberSchema.parse(req.body);
 
-    const { ok, initiative: init, role } = await canAccess(userId, initiativeId);
+    const { ok, initiative: init, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can add members' });
 
@@ -607,7 +612,7 @@ export const getSettings = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     let settings = await prisma.initiativeSettings.findUnique({ where: { initiativeId } });
@@ -627,7 +632,7 @@ export const updateSettings = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = settingsSchema.parse(req.body);
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can update settings' });
 
@@ -664,7 +669,7 @@ export const listTags = async (req: AuthRequest, res: Response) => {
     const { initiativeId } = req.params;
     const userId = req.user!.id;
 
-    const { ok } = await canAccess(userId, initiativeId);
+    const { ok } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
 
     const tags = await prisma.tag.findMany({ where: { initiativeId }, orderBy: { name: 'asc' } });
@@ -681,7 +686,7 @@ export const createTag = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = tagSchema.parse(req.body);
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can create tags' });
 
@@ -714,7 +719,7 @@ export const deleteTag = async (req: AuthRequest, res: Response) => {
     const { initiativeId, tagId } = req.params;
     const userId = req.user!.id;
 
-    const { ok, role } = await canAccess(userId, initiativeId);
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
     if (!ok) return res.status(403).json({ error: 'Access denied' });
     if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can delete tags' });
 

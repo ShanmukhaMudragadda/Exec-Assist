@@ -146,3 +146,17 @@ export const pushApi = {
   unsubscribe: (endpoint?: string) =>
     api.delete('/push/unsubscribe', { data: { endpoint } }),
 }
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+export const adminApi = {
+  listUsers: (search?: string) => api.get('/admin/users', { params: search ? { search } : {} }),
+  updateUserFeature: (userId: string, feature: string, enabled: boolean) =>
+    api.patch(`/admin/users/${userId}/features`, { feature, enabled }),
+  getStats: () => api.get('/admin/stats'),
+}
+
+// ── ELT Dashboard ─────────────────────────────────────────────────────────────
+export const eltApi = {
+  getSummary: () => api.get('/elt/summary'),
+  getUserWorkload: (userId: string) => api.get(`/elt/workload/${userId}`),
+}
