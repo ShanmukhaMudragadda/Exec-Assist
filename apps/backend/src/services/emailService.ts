@@ -213,6 +213,62 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   'completed':   { bg: '#dcfce7', color: '#16a34a', label: 'Completed' },
 };
 
+export const sendOverdueNotificationEmail = async (
+  assigneeEmail: string,
+  assigneeName: string,
+  actions: { title: string; dueDate: string | null; initiativeTitle: string | null; id: string; initiativeId: string | null }[],
+  senderName: string
+): Promise<void> => {
+  const appUrl = process.env.APP_URL ?? ''
+  const actionRows = actions.map(a => {
+    const url = a.initiativeId
+      ? `${appUrl}/initiatives/${a.initiativeId}/actions/${a.id}`
+      : `${appUrl}/actions/${a.id}`
+    const daysOverdue = a.dueDate
+      ? Math.floor((Date.now() - new Date(a.dueDate).getTime()) / 86_400_000)
+      : null
+    const overdueBadge = daysOverdue != null
+      ? `<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;">${daysOverdue}d overdue</span>`
+      : ''
+    return `
+      <tr>
+        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;vertical-align:top;">
+          <a href="${url}" style="color:#111827;font-weight:600;font-size:14px;text-decoration:none;display:block;margin-bottom:4px;">${a.title}</a>
+          <span style="color:#9ca3af;font-size:12px;">${a.initiativeTitle ?? 'Standalone'}</span>
+        </td>
+        <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;vertical-align:top;white-space:nowrap;">${overdueBadge}</td>
+      </tr>`
+  }).join('')
+
+  await sendEmail({
+    to: assigneeEmail,
+    subject: `Action Required: You have ${actions.length} overdue action${actions.length > 1 ? 's' : ''} on EAssist`,
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;">
+        <div style="background:linear-gradient(135deg,#dc2626,#ef4444);border-radius:12px;padding:28px 32px;margin-bottom:24px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:8px;">⏰</div>
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Overdue Actions</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">Hi ${assigneeName} — ${senderName} is following up</p>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:16px;">
+          <div style="padding:16px 16px 8px;border-bottom:1px solid #f3f4f6;">
+            <p style="margin:0;color:#374151;font-size:14px;">You have <strong>${actions.length} overdue action${actions.length > 1 ? 's' : ''}</strong> that need your attention:</p>
+          </div>
+          <table style="width:100%;border-collapse:collapse;">
+            <tbody>${actionRows}</tbody>
+          </table>
+        </div>
+        <div style="text-align:center;">
+          <a href="${appUrl}" style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;">
+            Open EAssist →
+          </a>
+        </div>
+        <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:16px;">You're receiving this because you have overdue actions assigned to you.</p>
+      </div>
+    `,
+  })
+}
+
 export const sendDailyReport = async (
   userEmail: string,
   userName: string,

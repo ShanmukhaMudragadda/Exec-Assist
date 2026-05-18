@@ -6,6 +6,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
 
 interface Initiative {
   id: string; title: string; description?: string | null; status: string; priority: string
@@ -41,11 +42,13 @@ function ProgressBar({ pct, color = '#4648d4' }: { pct: number; color?: string }
 
 export default function InitiativesPage() {
   const { user } = useAuthStore()
+  const { toast } = useToast()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [notifyingId, setNotifyingId] = useState<string | null>(null)
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '', status: 'active' })
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -72,6 +75,24 @@ export default function InitiativesPage() {
       queryClient.invalidateQueries({ queryKey: ['initiatives'] })
       setConfirmDeleteId(null)
     } finally { setDeleting(false) }
+  }
+
+  const handleNotifyOverdue = async (e: React.MouseEvent, initiativeId: string) => {
+    e.stopPropagation()
+    setNotifyingId(initiativeId)
+    try {
+      const res = await initiativesApi.notifyOverdue(initiativeId)
+      const { notified, overdueCount, message } = (res.data as any)
+      if (notified === 0) {
+        toast({ title: message ?? 'No overdue actions found' })
+      } else {
+        toast({ title: `Notified ${notified} assignee${notified > 1 ? 's' : ''}`, description: `${overdueCount} overdue action${overdueCount > 1 ? 's' : ''} covered` })
+      }
+    } catch {
+      toast({ title: 'Failed to send notifications', variant: 'destructive' })
+    } finally {
+      setNotifyingId(null)
+    }
   }
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -223,13 +244,26 @@ export default function InitiativesPage() {
                             </div>
                             <div className="flex items-start gap-2 shrink-0">
                               {user?.id === init.creator.id && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(init.id) }}
-                                  className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2]"
-                                  title="Delete initiative"
-                                >
-                                  <span className="material-symbols-outlined text-[16px]">delete</span>
-                                </button>
+                                <>
+                                  <button
+                                    onClick={(e) => handleNotifyOverdue(e, init.id)}
+                                    disabled={notifyingId === init.id}
+                                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2] disabled:opacity-50"
+                                    title="Notify assignees of overdue actions"
+                                  >
+                                    {notifyingId === init.id
+                                      ? <span className="w-4 h-4 border-2 border-[#dc2626]/30 border-t-[#dc2626] rounded-full animate-spin" />
+                                      : <span className="material-symbols-outlined text-[16px]">mail</span>
+                                    }
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(init.id) }}
+                                    className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[#d1d5db] hover:text-[#dc2626] transition-all rounded-md hover:bg-[#fef2f2]"
+                                    title="Delete initiative"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                                  </button>
+                                </>
                               )}
                               <div className="text-right">
                                 <span className="text-[18px] font-bold tabular-nums text-[#111827]">{init.progress || 0}%</span>

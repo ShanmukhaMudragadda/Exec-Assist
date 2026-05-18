@@ -1,0 +1,40 @@
+{
+  "name": "eassist-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for EAssist — query and manage actions & initiatives via Claude",
+  "type": "module",
+  "bin": {
+    "eassist-mcp": "./build/index.js"
+  },
+  "main": "./build/index.js",
+  "files": [
+    "build",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "axios": "^1.6.0",
+    "open": "^10.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "mcp",
+    "eassist",
+    "model-context-protocol",
+    "claude",
+    "actions",
+    "initiatives"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -113,7 +113,12 @@
       "Bash(2>&1)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\" -Recurse -Directory -ErrorAction SilentlyContinue)",
       "Bash(Select-Object -First 20)",
-      "Bash(Format-Table FullName)"
+      "Bash(Format-Table FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\\\\src\" -Recurse)",
+      "Bash(Select-Object FullName)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:modelcontextprotocol.info)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" -Recurse -Name \"*.env*\")"
     ]
   }
 }

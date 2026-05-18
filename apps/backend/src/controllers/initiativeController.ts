@@ -6,6 +6,7 @@ import { isSuperAdmin } from '../middleware/superAdmin';
 import { sendPushNotification } from '../services/pushService';
 import { logAudit } from '../services/auditService';
 import { sendInitiativeDailyDigest } from '../queue/emailQueue';
+import { sendOverdueNotificationEmail } from '../services/emailService';
 
 const prisma = new PrismaClient();
 
@@ -735,6 +736,70 @@ export const deleteTag = async (req: AuthRequest, res: Response) => {
     });
 
     return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const notifyOverdue = async (req: AuthRequest, res: Response) => {
+  try {
+    const { initiativeId } = req.params;
+    const userId = req.user!.id;
+    const callerName = (req.user as any).name ?? 'Your initiative owner';
+
+    const { ok, role } = await canAccess(userId, initiativeId, req.user?.role);
+    if (!ok) return res.status(403).json({ error: 'Access denied' });
+    if (!canEdit(role)) return res.status(403).json({ error: 'Only owners and admins can send notifications' });
+
+    const now = new Date();
+
+    const overdueActions = await prisma.action.findMany({
+      where: {
+        initiativeId,
+        dueDate: { lt: now },
+        status: { notIn: ['completed', 'cancelled'] },
+      },
+      include: {
+        assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
+        initiative: { select: { id: true, title: true } },
+      },
+    });
+
+    if (overdueActions.length === 0) {
+      return res.json({ notified: 0, message: 'No overdue actions found' });
+    }
+
+    // Group by assignee
+    const byAssignee = new Map<string, { email: string; name: string; actions: typeof overdueActions }>()
+    for (const action of overdueActions) {
+      for (const assignee of action.assignees) {
+        const u = assignee.user
+        if (!byAssignee.has(u.id)) {
+          byAssignee.set(u.id, { email: u.email, name: u.name, actions: [] })
+        }
+        byAssignee.get(u.id)!.actions.push(action)
+      }
+    }
+
+    await Promise.allSettled(
+      [...byAssignee.values()].map(({ email, name, actions }) =>
+        sendOverdueNotificationEmail(
+          email,
+          name,
+          actions.map(a => ({
+            id: a.id,
+            title: a.title,
+            dueDate: a.dueDate ? a.dueDate.toISOString() : null,
+            initiativeTitle: a.initiative?.title ?? null,
+            initiativeId: a.initiativeId,
+          })),
+          callerName,
+        )
+      )
+    )
+
+    return res.json({ notified: byAssignee.size, overdueCount: overdueActions.length })
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });

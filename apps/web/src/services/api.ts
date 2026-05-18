@@ -60,6 +60,7 @@ export const initiativesApi = {
     title: string; description: string | null; status: string; priority: string; progress: number; dueDate: string | null
   }>) => api.patch(`/initiatives/${initiativeId}`, data),
   delete: (initiativeId: string) => api.delete(`/initiatives/${initiativeId}`),
+  notifyOverdue: (initiativeId: string) => api.post(`/initiatives/${initiativeId}/notify-overdue`),
 }
 
 // ── Initiative Members ────────────────────────────────────────────────────────

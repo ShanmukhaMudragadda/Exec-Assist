@@ -16,6 +16,7 @@ import {
   listTags,
   createTag,
   deleteTag,
+  notifyOverdue,
 } from '../controllers/initiativeController';
 import { listAllTags, createGlobalTag } from '../controllers/tagController';
 import {
@@ -66,6 +67,7 @@ router.post('/tags', authMiddleware, createGlobalTag);                          
 router.get('/initiatives/:initiativeId/tags', authMiddleware, listTags);
 router.post('/initiatives/:initiativeId/tags', authMiddleware, createTag);
 router.delete('/initiatives/:initiativeId/tags/:tagId', authMiddleware, deleteTag);
+router.post('/initiatives/:initiativeId/notify-overdue', authMiddleware, notifyOverdue);
 
 // ── actions ─────────────────────────────────────────────────────────────────
 router.get('/initiatives/:initiativeId/actions', authMiddleware, listActions);
