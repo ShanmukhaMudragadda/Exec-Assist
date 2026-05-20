@@ -4,9 +4,9 @@ import { initiateMcpAuth, mcpCallback, refreshAccessToken, mcpLogout } from '../
 const router = Router();
 
 // No auth middleware — these are the auth endpoints themselves
-router.get('/auth/mcp', initiateMcpAuth);
-router.get('/auth/mcp/callback', mcpCallback);
-router.post('/auth/refresh', refreshAccessToken);
-router.post('/auth/logout', mcpLogout);
+router.get('/api/auth/mcp', initiateMcpAuth);
+router.get('/api/auth/mcp/callback', mcpCallback);
+router.post('/api/auth/refresh', refreshAccessToken);
+router.post('/api/auth/logout', mcpLogout);
 
 export default router;

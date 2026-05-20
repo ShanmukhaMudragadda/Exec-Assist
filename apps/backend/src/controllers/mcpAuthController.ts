@@ -41,7 +41,7 @@ export const initiateMcpAuth = (req: Request, res: Response) => {
   const state = crypto.randomBytes(16).toString('hex');
   pendingStates.set(state, { port, expiresAt: Date.now() + 5 * 60 * 1000 });
 
-  const redirectUri = `${process.env.BACKEND_URL ?? `http://localhost:${process.env.PORT ?? 3000}`}/auth/mcp/callback`;
+  const redirectUri = `${process.env.BACKEND_URL ?? `http://localhost:${process.env.PORT ?? 3000}`}/api/auth/mcp/callback`;
 
   const client = new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
@@ -59,7 +59,7 @@ export const initiateMcpAuth = (req: Request, res: Response) => {
   res.redirect(url);
 };
 
-// GET /auth/mcp/callback?code=...&state=...
+// GET /api/auth/mcp/callback?code=...&state=...
 // Google redirects here; we exchange code, issue JWT + refresh token, redirect to MCP localhost
 export const mcpCallback = async (req: Request, res: Response) => {
   try {
@@ -79,7 +79,7 @@ export const mcpCallback = async (req: Request, res: Response) => {
     pendingStates.delete(state);
 
     const backendUrl = process.env.BACKEND_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
-    const redirectUri = `${backendUrl}/auth/mcp/callback`;
+    const redirectUri = `${backendUrl}/api/auth/mcp/callback`;
 
     const client = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
