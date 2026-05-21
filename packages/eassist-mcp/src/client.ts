@@ -1,10 +1,10 @@
 import axios from 'axios'
 import { auth } from './auth.js'
 
+const DEFAULT_API_URL = 'https://eassist.forsysinc.com'
+
 function getApiUrl(): string {
-  const url = process.env.EASSIST_API_URL
-  if (!url) throw new Error('EASSIST_API_URL environment variable is required')
-  return url.replace(/\/$/, '')
+  return (process.env.EASSIST_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '')
 }
 
 async function headers() {

@@ -118,7 +118,15 @@
       "Bash(Select-Object FullName)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:modelcontextprotocol.info)",
-      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" -Recurse -Name \"*.env*\")"
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\Executive-Management\\\\apps\\\\backend\" -Recurse -Name \"*.env*\")",
+      "Bash(npm version *)",
+      "mcp__eassist__whoami",
+      "PowerShell(Test-Path *)",
+      "mcp__eassist__get_user_actions",
+      "mcp__eassist__list_initiatives",
+      "Bash(claude mcp *)",
+      "Bash(npm list *)",
+      "Bash(npm whoami *)"
     ]
   }
 }

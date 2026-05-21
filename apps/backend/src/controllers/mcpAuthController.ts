@@ -147,23 +147,8 @@ export const mcpCallback = async (req: Request, res: Response) => {
     callbackUrl.searchParams.set('name', user.name);
     callbackUrl.searchParams.set('email', user.email);
 
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head><title>EAssist — Authenticated</title>
-        <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#070c1b;color:#e2e8f0;}
-        .box{text-align:center;padding:40px;border-radius:16px;background:#0c1428;border:1px solid rgba(99,102,241,0.2);}
-        h2{color:#34d399;margin-bottom:8px;}p{color:#64748b;}</style></head>
-        <body><div class="box">
-          <h2>✓ Authenticated successfully</h2>
-          <p>Welcome, ${user.name}. You can close this tab and return to Claude.</p>
-        </div></body>
-      </html>
-      <script>
-        fetch('${callbackUrl.toString()}').catch(()=>{});
-        setTimeout(()=>window.close(), 2000);
-      </script>
-    `);
+    // Redirect directly to the MCP's local server — avoids HTTPS→HTTP fetch mixed-content issues
+    res.redirect(callbackUrl.toString());
   } catch (err) {
     console.error('[mcpCallback]', err);
     res.status(500).send('<h2>Authentication error. Please try again.</h2>');

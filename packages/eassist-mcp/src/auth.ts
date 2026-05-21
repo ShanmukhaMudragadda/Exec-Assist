@@ -33,9 +33,7 @@ class AuthManager {
   }
 
   private getApiUrl(): string {
-    const url = process.env.EASSIST_API_URL ?? this.data?.apiUrl
-    if (!url) throw new Error('EASSIST_API_URL environment variable is required')
-    return url.replace(/\/$/, '')
+    return (process.env.EASSIST_API_URL ?? this.data?.apiUrl ?? 'https://eassist.forsysinc.com').replace(/\/$/, '')
   }
 
   async getValidToken(): Promise<string> {
@@ -50,7 +48,7 @@ class AuthManager {
     if (this.data?.refreshToken) {
       try {
         const apiUrl = this.getApiUrl()
-        const res = await axios.post(`${apiUrl}/auth/refresh`, { refreshToken: this.data.refreshToken })
+        const res = await axios.post(`${apiUrl}/api/auth/refresh`, { refreshToken: this.data.refreshToken })
         const { token, refreshToken, expiresAt } = res.data as { token: string; refreshToken: string; expiresAt: string }
         this.store({ ...this.data, accessToken: token, refreshToken, expiresAt })
         return token
@@ -92,8 +90,15 @@ class AuthManager {
 
           this.store({ apiUrl, accessToken: token, refreshToken, expiresAt, name, email })
 
-          res.writeHead(200, { 'Content-Type': 'text/plain' })
-          res.end('OK')
+          const displayName = name ?? email ?? 'there'
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(`<!DOCTYPE html><html><head><title>EAssist — Authenticated</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#070c1b;color:#e2e8f0;}
+.box{text-align:center;padding:40px;border-radius:16px;background:#0c1428;border:1px solid rgba(99,102,241,0.2);}
+h2{color:#34d399;margin-bottom:8px;}p{color:#64748b;margin:4px 0;}</style></head>
+<body><div class="box"><h2>&#x2713; Authenticated successfully</h2>
+<p>Welcome, ${displayName}.</p><p>You can close this tab and return to Claude.</p>
+</div></body></html>`)
           server.close()
           resolve()
         } catch (err) {
@@ -103,7 +108,7 @@ class AuthManager {
       })
 
       server.listen(port, '127.0.0.1', async () => {
-        const authUrl = `${apiUrl}/auth/mcp?port=${port}`
+        const authUrl = `${apiUrl}/api/auth/mcp?port=${port}`
         console.error(`\n[eassist-mcp] Opening browser for authentication...\n${authUrl}\n`)
         try {
           const { default: open } = await import('open')
