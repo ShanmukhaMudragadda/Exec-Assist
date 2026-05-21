@@ -126,7 +126,8 @@
       "mcp__eassist__list_initiatives",
       "Bash(claude mcp *)",
       "Bash(npm list *)",
-      "Bash(npm whoami *)"
+      "Bash(npm whoami *)",
+      "Bash(npm publish *)"
     ]
   }
 }

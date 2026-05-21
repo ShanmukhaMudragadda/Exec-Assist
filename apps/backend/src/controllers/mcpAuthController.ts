@@ -8,15 +8,24 @@ import { logAudit } from '../services/auditService';
 const prisma = new PrismaClient();
 const REFRESH_TOKEN_TTL_DAYS = 30;
 
-// In-memory map: state → { port, expiresAt }
-const pendingStates = new Map<string, { port: number; expiresAt: number }>();
+// state → { sessionId, expiresAt }
+const pendingStates = new Map<string, { sessionId: string; expiresAt: number }>();
 
-// Cleanup stale states every 10 minutes
+// sessionId → token result (stored after OAuth completes, polled by MCP)
+const pendingResults = new Map<string, {
+  token: string;
+  refreshToken: string;
+  expiresAt: string;
+  name: string;
+  email: string;
+  createdAt: number;
+}>();
+
 setInterval(() => {
   const now = Date.now();
-  for (const [key, val] of pendingStates) {
-    if (val.expiresAt < now) pendingStates.delete(key);
-  }
+  const ttl = 5 * 60 * 1000;
+  for (const [k, v] of pendingStates) if (v.expiresAt < now) pendingStates.delete(k);
+  for (const [k, v] of pendingResults) if (v.createdAt + ttl < now) pendingResults.delete(k);
 }, 10 * 60 * 1000);
 
 function issueRefreshToken(): string {
@@ -29,17 +38,16 @@ async function storeRefreshToken(userId: string, token: string): Promise<Date> {
   return expiresAt;
 }
 
-// GET /auth/mcp?port=PORT
-// Redirects user browser to Google OAuth with backend as redirect_uri
+// GET /auth/mcp?session_id=SESSION_ID
 export const initiateMcpAuth = (req: Request, res: Response) => {
-  const port = parseInt(req.query.port as string);
-  if (!port || isNaN(port) || port < 1024 || port > 65535) {
-    res.status(400).json({ error: 'Valid port query param required' });
+  const sessionId = req.query.session_id as string;
+  if (!sessionId || sessionId.length < 16) {
+    res.status(400).json({ error: 'Valid session_id query param required' });
     return;
   }
 
   const state = crypto.randomBytes(16).toString('hex');
-  pendingStates.set(state, { port, expiresAt: Date.now() + 5 * 60 * 1000 });
+  pendingStates.set(state, { sessionId, expiresAt: Date.now() + 5 * 60 * 1000 });
 
   const redirectUri = `${process.env.BACKEND_URL ?? `http://localhost:${process.env.PORT ?? 3000}`}/api/auth/mcp/callback`;
 
@@ -59,8 +67,7 @@ export const initiateMcpAuth = (req: Request, res: Response) => {
   res.redirect(url);
 };
 
-// GET /api/auth/mcp/callback?code=...&state=...
-// Google redirects here; we exchange code, issue JWT + refresh token, redirect to MCP localhost
+// GET /auth/mcp/callback?code=...&state=...
 export const mcpCallback = async (req: Request, res: Response) => {
   try {
     const { code, state, error } = req.query as Record<string, string>;
@@ -140,19 +147,46 @@ export const mcpCallback = async (req: Request, res: Response) => {
       req,
     });
 
-    const callbackUrl = new URL(`http://localhost:${pending.port}/callback`);
-    callbackUrl.searchParams.set('token', accessToken);
-    callbackUrl.searchParams.set('refreshToken', refreshTokenStr);
-    callbackUrl.searchParams.set('expiresAt', expiresAt.toISOString());
-    callbackUrl.searchParams.set('name', user.name);
-    callbackUrl.searchParams.set('email', user.email);
+    // Store result for MCP to poll — no localhost redirect needed
+    pendingResults.set(pending.sessionId, {
+      token: accessToken,
+      refreshToken: refreshTokenStr,
+      expiresAt: expiresAt.toISOString(),
+      name: user.name,
+      email: user.email,
+      createdAt: Date.now(),
+    });
 
-    // Redirect directly to the MCP's local server — avoids HTTPS→HTTP fetch mixed-content issues
-    res.redirect(callbackUrl.toString());
+    res.send(`<!DOCTYPE html><html>
+<head><title>EAssist — Authenticated</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#070c1b;color:#e2e8f0;}
+.box{text-align:center;padding:40px;border-radius:16px;background:#0c1428;border:1px solid rgba(99,102,241,0.2);}
+h2{color:#34d399;margin-bottom:8px;}p{color:#64748b;margin:4px 0;}</style></head>
+<body><div class="box">
+<h2>&#x2713; Authenticated successfully</h2>
+<p>Welcome, ${user.name}.</p>
+<p>You can close this tab and return to Claude.</p>
+</div></body></html>`);
   } catch (err) {
     console.error('[mcpCallback]', err);
     res.status(500).send('<h2>Authentication error. Please try again.</h2>');
   }
+};
+
+// GET /auth/mcp/result?session_id=SESSION_ID  — polled by MCP until token is ready
+export const getMcpResult = (req: Request, res: Response) => {
+  const sessionId = req.query.session_id as string;
+  if (!sessionId) {
+    res.status(400).json({ error: 'session_id required' });
+    return;
+  }
+  const result = pendingResults.get(sessionId);
+  if (!result) {
+    res.status(404).json({ error: 'Not yet available' });
+    return;
+  }
+  pendingResults.delete(sessionId); // one-time retrieval
+  res.json(result);
 };
 
 // POST /auth/refresh  — { refreshToken } → { token, refreshToken, expiresAt }
@@ -174,7 +208,6 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
       return;
     }
 
-    // Rotate refresh token
     await (prisma.refreshToken as any).update({ where: { id: stored.id }, data: { revoked: true } });
 
     const newRefreshToken = issueRefreshToken();

@@ -1,8 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import http from 'http'
-import { URL } from 'url'
+import crypto from 'crypto'
 import axios from 'axios'
 import type { AuthData } from './types.js'
 
@@ -28,7 +27,6 @@ class AuthManager {
   }
 
   private isExpired(expiresAt: string): boolean {
-    // Add 60s buffer so we refresh before actual expiry
     return new Date(expiresAt).getTime() - 60_000 < Date.now()
   }
 
@@ -39,12 +37,10 @@ class AuthManager {
   async getValidToken(): Promise<string> {
     if (!this.data) this.data = this.load()
 
-    // Valid access token
     if (this.data?.accessToken && !this.isExpired(this.data.expiresAt)) {
       return this.data.accessToken
     }
 
-    // Try refresh
     if (this.data?.refreshToken) {
       try {
         const apiUrl = this.getApiUrl()
@@ -57,88 +53,47 @@ class AuthManager {
       }
     }
 
-    // Full OAuth flow
     await this.triggerOAuthFlow()
     return this.data!.accessToken
   }
 
   async triggerOAuthFlow(): Promise<void> {
     const apiUrl = this.getApiUrl()
-    const port = await this.findFreePort()
+    const sessionId = crypto.randomBytes(16).toString('hex')
 
-    return new Promise((resolve, reject) => {
-      const server = http.createServer((req, res) => {
-        try {
-          const url = new URL(req.url ?? '/', `http://localhost:${port}`)
-          if (url.pathname !== '/callback') {
-            res.end()
-            return
-          }
+    const authUrl = `${apiUrl}/api/auth/mcp?session_id=${sessionId}`
+    console.error(`\n[eassist-mcp] Opening browser for authentication...\n${authUrl}\n`)
 
-          const token = url.searchParams.get('token')
-          const refreshToken = url.searchParams.get('refreshToken')
-          const expiresAt = url.searchParams.get('expiresAt')
-          const name = url.searchParams.get('name') ?? undefined
-          const email = url.searchParams.get('email') ?? undefined
+    try {
+      const { default: open } = await import('open')
+      await open(authUrl)
+    } catch {
+      console.error('[eassist-mcp] Could not open browser automatically. Please visit the URL above manually.')
+    }
 
-          if (!token || !refreshToken || !expiresAt) {
-            res.end('Missing auth params')
-            reject(new Error('OAuth callback missing params'))
-            server.close()
-            return
-          }
+    // Poll the backend until it has the token (user completes OAuth in browser)
+    const pollUrl = `${apiUrl}/api/auth/mcp/result?session_id=${sessionId}`
+    const deadline = Date.now() + 5 * 60 * 1000
 
-          this.store({ apiUrl, accessToken: token, refreshToken, expiresAt, name, email })
+    while (Date.now() < deadline) {
+      await new Promise<void>(r => setTimeout(r, 2000))
+      try {
+        const res = await axios.get<{
+          token: string
+          refreshToken: string
+          expiresAt: string
+          name: string
+          email: string
+        }>(pollUrl)
+        const { token, refreshToken, expiresAt, name, email } = res.data
+        this.store({ apiUrl, accessToken: token, refreshToken, expiresAt, name, email })
+        return
+      } catch {
+        // 404 = not ready yet, any other error = retry
+      }
+    }
 
-          const displayName = name ?? email ?? 'there'
-          res.writeHead(200, { 'Content-Type': 'text/html' })
-          res.end(`<!DOCTYPE html><html><head><title>EAssist — Authenticated</title>
-<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#070c1b;color:#e2e8f0;}
-.box{text-align:center;padding:40px;border-radius:16px;background:#0c1428;border:1px solid rgba(99,102,241,0.2);}
-h2{color:#34d399;margin-bottom:8px;}p{color:#64748b;margin:4px 0;}</style></head>
-<body><div class="box"><h2>&#x2713; Authenticated successfully</h2>
-<p>Welcome, ${displayName}.</p><p>You can close this tab and return to Claude.</p>
-</div></body></html>`)
-          server.close()
-          resolve()
-        } catch (err) {
-          server.close()
-          reject(err)
-        }
-      })
-
-      server.listen(port, '127.0.0.1', async () => {
-        const authUrl = `${apiUrl}/api/auth/mcp?port=${port}`
-        console.error(`\n[eassist-mcp] Opening browser for authentication...\n${authUrl}\n`)
-        try {
-          const { default: open } = await import('open')
-          await open(authUrl)
-        } catch {
-          console.error('[eassist-mcp] Could not open browser automatically. Please open the URL above manually.')
-        }
-      })
-
-      server.on('error', reject)
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        server.close()
-        reject(new Error('Authentication timed out. Please try again.'))
-      }, 5 * 60 * 1000)
-    })
-  }
-
-  private findFreePort(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const server = http.createServer()
-      server.listen(0, '127.0.0.1', () => {
-        const addr = server.address()
-        server.close(() => {
-          if (addr && typeof addr === 'object') resolve(addr.port)
-          else reject(new Error('Could not find free port'))
-        })
-      })
-    })
+    throw new Error('Authentication timed out. Please try again.')
   }
 
   getStoredName(): string {
