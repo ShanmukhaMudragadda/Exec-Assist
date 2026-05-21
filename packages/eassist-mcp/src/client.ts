@@ -4,7 +4,8 @@ import { auth } from './auth.js'
 const DEFAULT_API_URL = 'https://eassist.forsysinc.com'
 
 function getApiUrl(): string {
-  return (process.env.EASSIST_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '')
+  const base = (process.env.EASSIST_API_URL ?? DEFAULT_API_URL).replace(/\/$/, '')
+  return base.endsWith('/api') ? base : base + '/api'
 }
 
 async function headers() {

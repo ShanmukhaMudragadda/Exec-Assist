@@ -127,7 +127,9 @@
       "Bash(claude mcp *)",
       "Bash(npm list *)",
       "Bash(npm whoami *)",
-      "Bash(npm publish *)"
+      "Bash(npm publish *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\TaskZilla-Revamped\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }
