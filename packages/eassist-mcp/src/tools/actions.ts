@@ -144,7 +144,7 @@ export async function handleActionTool(name: string, args: Record<string, unknow
       }
 
       const url = initiativeId ? `/initiatives/${initiativeId}/actions` : '/actions'
-      const action = await apiPost<Action>(url, body)
+      const { action } = await apiPost<{ action: Action }>(url, body)
       clearCache()
       return `Action created successfully.\n\n${fmtAction(action)}`
     }
@@ -163,20 +163,20 @@ export async function handleActionTool(name: string, args: Record<string, unknow
         body.assigneeIds = ids
       }
 
-      const action = await apiPatch<Action>(`/actions/${args.action_id}`, body)
+      const { action } = await apiPatch<{ action: Action }>(`/actions/${args.action_id}`, body)
       return `Action updated.\n\n${fmtAction(action)}`
     }
 
     case 'complete_action': {
-      const action = await apiPatch<Action>(`/actions/${args.action_id}`, { status: 'completed' })
+      const { action } = await apiPatch<{ action: Action }>(`/actions/${args.action_id}`, { status: 'completed' })
       return `Marked as completed: **${action.title}**`
     }
 
     case 'assign_action': {
       const { ids, errors } = await resolveAssignees(args.assignees as string[])
       if (errors.length) return errors.join('\n')
-      const action = await apiPatch<Action>(`/actions/${args.action_id}`, { assigneeIds: ids })
-      return `Assigned **${action.title}** to ${action.assignees.map(u => u.name).join(', ')}.`
+      const { action } = await apiPatch<{ action: Action }>(`/actions/${args.action_id}`, { assigneeIds: ids })
+      return `Assigned **${action.title}** to ${action.assignees?.map(u => u.name).join(', ') || 'assignees'}.`
     }
 
     case 'delete_action': {

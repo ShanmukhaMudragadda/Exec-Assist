@@ -62,13 +62,20 @@ class AuthManager {
     const sessionId = crypto.randomBytes(16).toString('hex')
 
     const authUrl = `${apiUrl}/api/auth/mcp?session_id=${sessionId}`
-    console.error(`\n[eassist-mcp] Opening browser for authentication...\n${authUrl}\n`)
+
+    console.error('\n' + '='.repeat(60))
+    console.error('  EAssist Authentication Required')
+    console.error('='.repeat(60))
+    console.error('\n  Open this URL in your browser to sign in:\n')
+    console.error(`  ${authUrl}\n`)
+    console.error('  (If the browser opens automatically, complete sign-in there)')
+    console.error('='.repeat(60) + '\n')
 
     try {
       const { default: open } = await import('open')
       await open(authUrl)
     } catch {
-      console.error('[eassist-mcp] Could not open browser automatically. Please visit the URL above manually.')
+      // URL already printed above — user can copy-paste it
     }
 
     // Poll the backend until it has the token (user completes OAuth in browser)

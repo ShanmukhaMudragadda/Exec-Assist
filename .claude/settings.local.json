@@ -129,7 +129,12 @@
       "Bash(npm whoami *)",
       "Bash(npm publish *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\shanmukha.mudragadda\\\\Desktop\\\\TaskZilla-Revamped\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "mcp__eassist__get_overdue_actions",
+      "mcp__eassist__get_executive_summary",
+      "mcp__japex-mcp__get_tasks_by_assignee",
+      "mcp__eassist__create_action",
+      "mcp__eassist__logout"
     ]
   }
 }
