@@ -887,7 +887,7 @@ export default function CommandCenterPage() {
                   <span className={cn('px-2 py-0.5 text-[11px] font-bold rounded-full', INIT_STATUS[initiative.status]?.cls || INIT_STATUS.active.cls)}>
                     {INIT_STATUS[initiative.status]?.text || initiative.status}
                   </span>
-                  {daysRemaining !== null && (
+                  {daysRemaining !== null && (daysRemaining >= 0 || (initiative.status !== 'completed' && (initiative.progress || 0) < 100)) && (
                     <span className={cn('px-2 py-0.5 text-[11px] font-bold rounded-full', daysRemaining < 0 ? 'bg-[#fef2f2] text-[#dc2626]' : 'bg-[#f2f4f6] text-[#6b7280]')}>
                       {daysRemaining < 0 ? `${Math.abs(daysRemaining)}d overdue` : `${daysRemaining}d left`}
                     </span>

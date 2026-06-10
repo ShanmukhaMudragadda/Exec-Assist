@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -9,6 +9,7 @@ import { eltApi } from '@/services/api'
 import { useToast } from '@/hooks/use-toast'
 import { format, isBefore, differenceInDays } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { Link } from 'react-router-dom'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -165,17 +166,21 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 // ── KPI tile ──────────────────────────────────────────────────────────────────
 
-function KpiTile({ label, value, color, icon, sub }: {
-  label: string; value: string | number; color: string; icon: string; sub?: string
+function KpiTile({ label, value, color, icon, sub, onClick }: {
+  label: string; value: string | number; color: string; icon: string; sub?: string; onClick?: () => void
 }) {
   return (
     <div
-      className="rounded-xl p-5 flex flex-col gap-2 relative overflow-hidden"
+      onClick={onClick}
+      className={cn('rounded-xl p-5 flex flex-col gap-2 relative overflow-hidden', onClick && 'cursor-pointer')}
       style={{
         background: DARK.surface,
         border: `1px solid ${DARK.border}`,
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
       }}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = DARK.borderBright; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.45)' } }}
+      onMouseLeave={e => { if (onClick) { e.currentTarget.style.borderColor = DARK.border; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.3)' } }}
     >
       <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl" style={{ background: `linear-gradient(90deg, transparent, ${color}60, transparent)` }} />
       <div className="flex items-center justify-between">
@@ -186,6 +191,334 @@ function KpiTile({ label, value, color, icon, sub }: {
         {value}
       </div>
       {sub && <div className="text-[11px]" style={{ color: DARK.muted }}>{sub}</div>}
+      {onClick && (
+        <div className="absolute bottom-2.5 right-3 text-[10px] font-medium flex items-center gap-0.5" style={{ color: DARK.muted }}>
+          Details
+          <span className="material-symbols-outlined text-[11px]">arrow_forward</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── KPI Detail Modal ──────────────────────────────────────────────────────────
+
+type KpiKey = 'overdue' | 'at-risk' | 'completion' | 'ontime' | 'due-week' | 'unassigned'
+
+function OverdueDetail({ actions }: { actions: ActionItem[] }) {
+  if (actions.length === 0) return (
+    <div className="text-center py-8">
+      <span className="material-symbols-outlined text-[32px] block mb-2" style={{ color: C.green }}>verified</span>
+      <p className="text-sm" style={{ color: DARK.muted }}>No overdue actions — great job!</p>
+    </div>
+  )
+  return (
+    <div className="space-y-2.5">
+      {actions.map(a => {
+        const days = a.dueDate ? Math.abs(differenceInDays(new Date(a.dueDate), new Date())) : 0
+        return (
+          <div key={a.id} className="rounded-xl p-4 flex items-start gap-3" style={{ background: '#080e1f', border: `1px solid ${DARK.subtle}` }}>
+            <div className="mt-0.5 w-10 h-10 rounded-lg flex flex-col items-center justify-center shrink-0" style={{ background: `${C.red}15`, border: `1px solid ${C.red}25` }}>
+              <span className="text-[12px] font-black tabular-nums leading-none" style={{ color: C.red }}>{days}d</span>
+              <span className="text-[8px] font-semibold" style={{ color: C.red }}>late</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: DARK.text }}>{a.title}</p>
+              <div className="flex items-center gap-3 mt-1 text-xs flex-wrap" style={{ color: DARK.muted }}>
+                {a.initiative && <span>{a.initiative.title}</span>}
+                <span style={{ color: C.red }}>Due {fmt(a.dueDate)}</span>
+              </div>
+              {a.assignees.length > 0 ? (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex -space-x-1">
+                    {a.assignees.slice(0, 3).map(u => <Avatar key={u.id} name={u.name} avatar={u.avatar} />)}
+                  </div>
+                  <span className="text-[11px]" style={{ color: DARK.muted }}>{a.assignees.map(u => u.name).join(', ')}</span>
+                </div>
+              ) : (
+                <span className="inline-block mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}25` }}>UNASSIGNED</span>
+              )}
+            </div>
+            <PriorityBadge priority={a.priority} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function AtRiskDetail({ initiatives, overdueActions }: { initiatives: InitiativeSummary[]; overdueActions: ActionItem[] }) {
+  if (initiatives.length === 0) return (
+    <div className="text-center py-8">
+      <span className="material-symbols-outlined text-[32px] block mb-2" style={{ color: C.green }}>verified</span>
+      <p className="text-sm" style={{ color: DARK.muted }}>No at-risk initiatives — all on track!</p>
+    </div>
+  )
+  return (
+    <div className="space-y-3">
+      {initiatives.map(init => {
+        const risk = riskLabel(init.riskScore)
+        const days = daysTo(init.dueDate)
+        const initOverdue = overdueActions.filter(a => a.initiative?.id === init.id)
+        const progColor = init.progress >= 70 ? C.green : init.progress >= 40 ? C.indigo : C.red
+        return (
+          <div key={init.id} className="rounded-xl p-4" style={{ background: '#080e1f', border: `1px solid ${DARK.subtle}` }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: DARK.text }}>{init.title}</p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded capitalize"
+                    style={{ background: `${STATUS_COLOR[init.status] ?? DARK.muted}18`, color: STATUS_COLOR[init.status] ?? DARK.muted, border: `1px solid ${STATUS_COLOR[init.status] ?? DARK.muted}30` }}>
+                    {init.status}
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: `${risk.color}18`, color: risk.color, border: `1px solid ${risk.color}30` }}>
+                    {risk.label} risk · {init.riskScore}pts
+                  </span>
+                  {days != null && (
+                    <span className="text-[11px]" style={{ color: days < 0 ? C.red : DARK.muted }}>
+                      {days < 0 ? `${Math.abs(days)}d past deadline` : `${days}d left`}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-2xl font-black tabular-nums" style={{ color: risk.color }}>{init.riskScore}</div>
+                <div className="text-[9px]" style={{ color: DARK.muted }}>risk pts</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: DARK.subtle }}>
+                <div className="h-full rounded-full" style={{ width: `${init.progress}%`, background: progColor }} />
+              </div>
+              <span className="text-[10px] tabular-nums" style={{ color: progColor }}>{init.progress}%</span>
+            </div>
+            <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: DARK.muted }}>
+              {initOverdue.length > 0
+                ? <span style={{ color: C.red }}>{initOverdue.length} overdue</span>
+                : <span>0 overdue</span>}
+              <span>{init.openCount} open</span>
+              <span>{init.completedCount} / {init.actionCount} done</span>
+            </div>
+            {initOverdue.length > 0 && (
+              <div className="mt-3 pt-3 space-y-1.5" style={{ borderTop: `1px solid ${DARK.subtle}` }}>
+                {initOverdue.slice(0, 3).map(a => (
+                  <div key={a.id} className="flex items-center gap-2 text-xs">
+                    <span className="material-symbols-outlined text-[12px]" style={{ color: C.red }}>alarm</span>
+                    <span className="flex-1 truncate" style={{ color: DARK.muted }}>{a.title}</span>
+                    <span className="shrink-0 font-medium" style={{ color: C.red }}>{fmt(a.dueDate)}</span>
+                  </div>
+                ))}
+                {initOverdue.length > 3 && (
+                  <p className="text-[10px] pl-5" style={{ color: DARK.muted }}>+{initOverdue.length - 3} more overdue</p>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CompletionDetail({ counts }: { counts: EltSummary['actionCounts'] }) {
+  const rate = counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0
+  const bars: { label: string; count: number; color: string }[] = [
+    { label: 'Completed', count: counts.completed, color: C.green },
+    { label: 'Open',      count: counts.open,      color: C.indigo },
+    { label: 'Overdue',   count: counts.overdue,   color: C.red },
+  ]
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-2">
+        <div className="text-7xl font-black tabular-nums" style={{ color: C.green }}>{rate}%</div>
+        <p className="text-sm mt-2" style={{ color: DARK.muted }}>{counts.completed} completed out of {counts.total} total actions</p>
+      </div>
+      <div className="space-y-3.5">
+        {bars.map(({ label, count, color }) => {
+          const pct = counts.total > 0 ? Math.round((count / counts.total) * 100) : 0
+          return (
+            <div key={label} className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span style={{ color: DARK.text }}>{label}</span>
+                <span className="tabular-nums" style={{ color }}>{count} <span style={{ color: DARK.muted }}>({pct}%)</span></span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: DARK.subtle }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function OnTimeDetail({ rate, counts }: { rate: number | null; counts: EltSummary['actionCounts'] }) {
+  const rateColor = rate == null ? DARK.muted : rate >= 80 ? C.green : rate >= 50 ? C.indigo : C.red
+  return (
+    <div className="space-y-5">
+      <div className="text-center py-2">
+        <div className="text-7xl font-black tabular-nums" style={{ color: rateColor }}>
+          {rate != null ? `${rate}%` : 'N/A'}
+        </div>
+        <p className="text-sm mt-2" style={{ color: DARK.muted }}>of completed actions were delivered on time</p>
+      </div>
+      <div className="rounded-xl p-4 space-y-2" style={{ background: '#080e1f', border: `1px solid ${DARK.subtle}` }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: DARK.text }}>What this means</p>
+        <p className="text-xs leading-relaxed" style={{ color: DARK.muted }}>
+          On-time delivery measures what percentage of completed actions were finished before or on their due date.
+          A rate above 80% indicates strong execution discipline across your team.
+        </p>
+      </div>
+      <div className="rounded-xl p-4 space-y-2.5" style={{ background: '#080e1f', border: `1px solid ${DARK.subtle}` }}>
+        {[
+          { label: 'Total Completed',         value: counts.completed, color: C.green },
+          { label: 'Currently Overdue (open)', value: counts.overdue,   color: counts.overdue > 0 ? C.red : C.green },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="flex justify-between text-xs">
+            <span style={{ color: DARK.muted }}>{label}</span>
+            <span className="font-semibold tabular-nums" style={{ color }}>{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DueWeekDetail({ count }: { count: number }) {
+  return (
+    <div className="space-y-5">
+      <div className="text-center py-2">
+        <div className="text-7xl font-black tabular-nums" style={{ color: C.indigo }}>{count}</div>
+        <p className="text-sm mt-2" style={{ color: DARK.muted }}>actions due in the next 7 days</p>
+      </div>
+      <div className="rounded-xl p-4 space-y-2" style={{ background: '#080e1f', border: `1px solid ${C.indigo}25` }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="material-symbols-outlined text-[16px]" style={{ color: C.indigo }}>event_upcoming</span>
+          <p className="text-xs font-semibold" style={{ color: DARK.text }}>Upcoming Deadlines</p>
+        </div>
+        <p className="text-xs leading-relaxed" style={{ color: DARK.muted }}>
+          {count > 0
+            ? `${count} action${count !== 1 ? 's' : ''} must be completed within the next 7 days. Review them in the Command Center to ensure they are assigned and in progress.`
+            : 'No actions are due in the next 7 days.'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function UnassignedDetail({ count }: { count: number }) {
+  return (
+    <div className="space-y-5">
+      <div className="text-center py-2">
+        <div className="text-7xl font-black tabular-nums" style={{ color: count > 0 ? C.red : C.green }}>{count}</div>
+        <p className="text-sm mt-2" style={{ color: DARK.muted }}>
+          {count > 0 ? 'urgent / high-priority actions without an owner' : 'All critical actions are assigned'}
+        </p>
+      </div>
+      {count > 0 ? (
+        <div className="rounded-xl p-4 space-y-2" style={{ background: '#080e1f', border: `1px solid ${C.red}25` }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-[16px]" style={{ color: C.red }}>priority_high</span>
+            <p className="text-xs font-semibold" style={{ color: C.red }}>Immediate Action Required</p>
+          </div>
+          <p className="text-xs leading-relaxed" style={{ color: DARK.muted }}>
+            {count} critical action{count !== 1 ? 's' : ''} with Urgent or High priority currently have no owner assigned.
+            Unowned critical work is at high risk of being missed. Assign them immediately in the Command Center.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl p-4 text-center" style={{ background: '#080e1f', border: `1px solid ${C.green}25` }}>
+          <span className="material-symbols-outlined text-[32px] block mb-2" style={{ color: C.green }}>verified</span>
+          <p className="text-xs" style={{ color: DARK.muted }}>All urgent and high-priority actions have assigned owners.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KpiModal({ type, data, onClose }: { type: KpiKey; data: EltSummary; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const atRiskList = data.initiatives
+    .filter(i => i.status === 'at-risk' || i.riskScore > 8)
+    .sort((a, b) => b.riskScore - a.riskScore)
+  const completionRate = data.actionCounts.total > 0 ? Math.round((data.actionCounts.completed / data.actionCounts.total) * 100) : 0
+
+  const configs: Record<KpiKey, { title: string; subtitle: string; icon: string; color: string; ccFilter: string }> = {
+    completion: { title: 'Completion Rate',       subtitle: `${completionRate}% — ${data.actionCounts.completed} of ${data.actionCounts.total} actions done`, icon: 'check_circle', color: C.green,  ccFilter: 'completed' },
+    ontime:     { title: 'On-Time Delivery',       subtitle: `${data.onTimeRate != null ? data.onTimeRate + '%' : 'N/A'} of completed actions on time`,        icon: 'schedule',    color: C.green,  ccFilter: 'completed' },
+    overdue:    { title: 'Overdue Actions',        subtitle: `${data.overdueActions.length} actions past their due date`,                                       icon: 'alarm',       color: C.red,    ccFilter: 'overdue'   },
+    'at-risk':  { title: 'At-Risk Initiatives',   subtitle: `${atRiskList.length} initiatives require leadership attention`,                                    icon: 'warning',     color: C.red,    ccFilter: 'open'      },
+    'due-week': { title: 'Due This Week',          subtitle: `${data.dueSoon} action${data.dueSoon !== 1 ? 's' : ''} due in the next 7 days`,                  icon: 'event',       color: C.indigo, ccFilter: 'open'      },
+    unassigned: { title: 'Unassigned Critical',   subtitle: `${data.unassignedHighPriority} urgent/high actions with no owner`,                                icon: 'person_off',  color: data.unassignedHighPriority > 0 ? C.red : C.green, ccFilter: 'open' },
+  }
+
+  const cfg = configs[type]
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-2xl overflow-hidden"
+        style={{ background: DARK.surface, border: `1px solid ${DARK.borderBright}`, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 flex items-start justify-between gap-3 shrink-0" style={{ borderBottom: `1px solid ${DARK.subtle}` }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cfg.color}18`, border: `1px solid ${cfg.color}30` }}>
+              <span className="material-symbols-outlined text-[20px]" style={{ color: cfg.color }}>{cfg.icon}</span>
+            </div>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: DARK.text }}>{cfg.title}</h2>
+              <p className="text-xs mt-0.5" style={{ color: DARK.muted }}>{cfg.subtitle}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="mt-1 p-1 rounded-lg transition-colors shrink-0"
+            style={{ color: DARK.muted }}
+            onMouseEnter={e => e.currentTarget.style.background = DARK.subtle}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-5">
+          {type === 'overdue'    && <OverdueDetail    actions={data.overdueActions} />}
+          {type === 'at-risk'    && <AtRiskDetail     initiatives={atRiskList} overdueActions={data.overdueActions} />}
+          {type === 'completion' && <CompletionDetail counts={data.actionCounts} />}
+          {type === 'ontime'     && <OnTimeDetail     rate={data.onTimeRate} counts={data.actionCounts} />}
+          {type === 'due-week'   && <DueWeekDetail    count={data.dueSoon} />}
+          {type === 'unassigned' && <UnassignedDetail count={data.unassignedHighPriority} />}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 flex items-center justify-between shrink-0" style={{ borderTop: `1px solid ${DARK.subtle}` }}>
+          <span className="text-[11px]" style={{ color: DARK.muted }}>Press Esc or click outside to close</span>
+          <Link
+            to={`/command-center?filter=${cfg.ccFilter}`}
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors"
+            style={{ background: `${C.indigo}20`, color: C.indigo, border: `1px solid ${C.indigo}30` }}
+            onMouseEnter={e => (e.currentTarget.style.background = `${C.indigo}35`)}
+            onMouseLeave={e => (e.currentTarget.style.background = `${C.indigo}20`)}
+          >
+            View in Command Center
+            <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
@@ -193,6 +526,7 @@ function KpiTile({ label, value, color, icon, sub }: {
 // ── Tab 1: Executive Pulse ────────────────────────────────────────────────────
 
 function PulseTab({ data }: { data: EltSummary }) {
+  const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
   const { actionCounts, statusFunnel, priorityDistribution, initiatives, onTimeRate, unassignedHighPriority, dueSoon } = data
 
   const completionRate = actionCounts.total > 0
@@ -228,13 +562,15 @@ function PulseTab({ data }: { data: EltSummary }) {
     <div className="space-y-6">
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KpiTile label="Completion Rate"     value={`${completionRate}%`}                            color={C.green}  icon="check_circle" sub={`${actionCounts.completed} of ${actionCounts.total} actions`} />
-        <KpiTile label="On-Time Delivery"    value={onTimeRate != null ? `${onTimeRate}%` : 'N/A'}   color={C.green}  icon="schedule"     sub="Completed before due date" />
-        <KpiTile label="Overdue Actions"     value={actionCounts.overdue}                            color={actionCounts.overdue > 0 ? C.red : C.green}   icon="alarm"       sub="Require immediate attention" />
-        <KpiTile label="At-Risk Initiatives" value={atRiskCount}                                     color={atRiskCount > 0 ? C.red : C.green}            icon="warning"     sub="High risk score or at-risk" />
-        <KpiTile label="Due This Week"       value={dueSoon}                                         color={C.indigo} icon="event"        sub="Actions due in next 7 days" />
-        <KpiTile label="Unassigned Critical" value={unassignedHighPriority}                         color={unassignedHighPriority > 0 ? C.red : C.green} icon="person_off"  sub="Urgent/high with no owner" />
+        <KpiTile label="Completion Rate"     value={`${completionRate}%`}                            color={C.green}  icon="check_circle" sub={`${actionCounts.completed} of ${actionCounts.total} actions`} onClick={() => setSelectedKpi('completion')} />
+        <KpiTile label="On-Time Delivery"    value={onTimeRate != null ? `${onTimeRate}%` : 'N/A'}   color={C.green}  icon="schedule"     sub="Completed before due date"   onClick={() => setSelectedKpi('ontime')} />
+        <KpiTile label="Overdue Actions"     value={actionCounts.overdue}                            color={actionCounts.overdue > 0 ? C.red : C.green}   icon="alarm"      sub="Require immediate attention"  onClick={() => setSelectedKpi('overdue')} />
+        <KpiTile label="At-Risk Initiatives" value={atRiskCount}                                     color={atRiskCount > 0 ? C.red : C.green}            icon="warning"    sub="High risk score or at-risk"   onClick={() => setSelectedKpi('at-risk')} />
+        <KpiTile label="Due This Week"       value={dueSoon}                                         color={C.indigo} icon="event"        sub="Actions due in next 7 days"  onClick={() => setSelectedKpi('due-week')} />
+        <KpiTile label="Unassigned Critical" value={unassignedHighPriority}                         color={unassignedHighPriority > 0 ? C.red : C.green} icon="person_off" sub="Urgent/high with no owner"   onClick={() => setSelectedKpi('unassigned')} />
       </div>
+
+      {selectedKpi && <KpiModal type={selectedKpi} data={data} onClose={() => setSelectedKpi(null)} />}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -718,6 +1054,12 @@ function TeamTab({ data }: { data: EltSummary }) {
 function RiskTab({ data }: { data: EltSummary }) {
   const [view, setView] = useState<'overdue' | 'stale' | 'longrunning'>('overdue')
   const [initFilter, setInitFilter] = useState('all')
+  const tableRef = useRef<HTMLDivElement>(null)
+
+  function jumpToTable(v: typeof view) {
+    setView(v)
+    setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
 
   const initiatives = Array.from(
     new Map(
@@ -743,28 +1085,55 @@ function RiskTab({ data }: { data: EltSummary }) {
     <div className="space-y-6">
       {/* Alert banners */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: DARK.surface, border: `1px solid ${C.red}25` }}>
+        <div
+          className="rounded-xl p-4 flex items-start gap-3 cursor-pointer transition-all"
+          style={{ background: DARK.surface, border: `1px solid ${C.red}25`, transition: 'border-color 0.15s, background 0.15s' }}
+          onClick={() => jumpToTable('overdue')}
+          onMouseEnter={e => { e.currentTarget.style.background = DARK.surfaceHover; e.currentTarget.style.borderColor = `${C.red}50` }}
+          onMouseLeave={e => { e.currentTarget.style.background = DARK.surface;      e.currentTarget.style.borderColor = `${C.red}25` }}
+        >
           <span className="material-symbols-outlined text-[22px]" style={{ color: C.red }}>alarm</span>
-          <div>
+          <div className="flex-1">
             <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.red }}>Overdue Actions</div>
             <div className="text-3xl font-black tabular-nums" style={{ color: C.red }}>{data.actionCounts.overdue}</div>
-            <div className="text-xs mt-1" style={{ color: DARK.muted }}>Require immediate action</div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-xs" style={{ color: DARK.muted }}>Require immediate action</span>
+              <span className="text-[10px] font-semibold" style={{ color: C.red }}>View list →</span>
+            </div>
           </div>
         </div>
-        <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: DARK.surface, border: `1px solid ${C.red}25` }}>
+        <Link
+          to="/command-center?filter=open"
+          className="rounded-xl p-4 flex items-start gap-3 transition-all"
+          style={{ background: DARK.surface, border: `1px solid ${C.red}25` }}
+          onMouseEnter={e => { e.currentTarget.style.background = DARK.surfaceHover; e.currentTarget.style.borderColor = `${C.red}50` }}
+          onMouseLeave={e => { e.currentTarget.style.background = DARK.surface;      e.currentTarget.style.borderColor = `${C.red}25` }}
+        >
           <span className="material-symbols-outlined text-[22px]" style={{ color: C.red }}>person_off</span>
-          <div>
+          <div className="flex-1">
             <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.red }}>Unassigned Critical</div>
             <div className="text-3xl font-black tabular-nums" style={{ color: C.red }}>{data.unassignedHighPriority}</div>
-            <div className="text-xs mt-1" style={{ color: DARK.muted }}>Urgent/high with no owner</div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-xs" style={{ color: DARK.muted }}>Urgent/high with no owner</span>
+              <span className="text-[10px] font-semibold" style={{ color: C.red }}>Assign now →</span>
+            </div>
           </div>
-        </div>
-        <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: DARK.surface, border: `1px solid ${C.indigo}25` }}>
+        </Link>
+        <div
+          className="rounded-xl p-4 flex items-start gap-3 cursor-pointer transition-all"
+          style={{ background: DARK.surface, border: `1px solid ${C.indigo}25` }}
+          onClick={() => jumpToTable('stale')}
+          onMouseEnter={e => { e.currentTarget.style.background = DARK.surfaceHover; e.currentTarget.style.borderColor = `${C.indigo}50` }}
+          onMouseLeave={e => { e.currentTarget.style.background = DARK.surface;      e.currentTarget.style.borderColor = `${C.indigo}25` }}
+        >
           <span className="material-symbols-outlined text-[22px]" style={{ color: C.indigo }}>schedule</span>
-          <div>
+          <div className="flex-1">
             <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.indigo }}>Stale (14d+)</div>
             <div className="text-3xl font-black tabular-nums" style={{ color: C.indigo }}>{data.staleActions.length}</div>
-            <div className="text-xs mt-1" style={{ color: DARK.muted }}>Open, no recent activity</div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-xs" style={{ color: DARK.muted }}>Open, no recent activity</span>
+              <span className="text-[10px] font-semibold" style={{ color: C.indigo }}>View list →</span>
+            </div>
           </div>
         </div>
       </div>
@@ -806,6 +1175,7 @@ function RiskTab({ data }: { data: EltSummary }) {
       )}
 
       {/* Action lists */}
+      <div ref={tableRef} style={{ scrollMarginTop: '80px' }}>
       <Card>
         <div className="px-5 py-3.5 flex items-center gap-3 flex-wrap" style={{ borderBottom: `1px solid ${DARK.subtle}` }}>
           <div className="flex gap-1.5">
@@ -882,6 +1252,7 @@ function RiskTab({ data }: { data: EltSummary }) {
           </table>
         </div>
       </Card>
+      </div>
     </div>
   )
 }

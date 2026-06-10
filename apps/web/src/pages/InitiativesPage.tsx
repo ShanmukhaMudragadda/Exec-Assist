@@ -209,7 +209,7 @@ export default function InitiativesPage() {
               <div className="space-y-2">
                 {filtered.map((init) => {
                   const isRisk = init.status === 'at-risk'
-                  const isOverdue = init.dueDate && isBefore(new Date(init.dueDate), now) && init.status !== 'completed'
+                  const isOverdue = init.dueDate && isBefore(new Date(init.dueDate), now) && init.status !== 'completed' && (init.progress ?? 0) < 100
                   const daysLeft = init.dueDate ? differenceInDays(new Date(init.dueDate), now) : null
                   const totalA = (init as any).actionCount ?? init.actions?.length ?? 0
                   const doneA = (init as any).completedActionCount ?? init.actions?.filter((a) => a.status === 'completed').length ?? 0
@@ -303,7 +303,7 @@ export default function InitiativesPage() {
                               <span>{init.members!.length} member{init.members!.length !== 1 ? 's' : ''}</span>
                             )}
                             <span className="text-[11px] font-medium text-[#9ca3af]">{PRIORITY_LABEL[init.priority] || 'Medium'} priority</span>
-                            {init.dueDate && (
+                            {init.dueDate && (daysLeft === null || daysLeft >= 0 || !isOverdue) && (
                               <span className={cn(isOverdue ? 'text-[#dc2626] font-semibold' : '')}>
                                 {daysLeft !== null && daysLeft < 0
                                   ? `${Math.abs(daysLeft)}d overdue`

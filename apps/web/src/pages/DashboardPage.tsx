@@ -381,20 +381,22 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl border border-[#f0f0f0] shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3.5">
               <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-widest mb-4">Today's Progress</p>
               <div className="grid grid-cols-2 gap-3">
-                <div
-                  className="rounded-xl p-3.5 text-center"
+                <Link
+                  to="/command-center?filter=completed"
+                  className="rounded-xl p-3.5 text-center block transition-opacity hover:opacity-80"
                   style={{ background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)' }}
                 >
                   <p className="text-[26px] font-bold text-[#111827] tabular-nums leading-none">{completedCount}</p>
                   <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-2">Completed</p>
-                </div>
-                <div
-                  className="rounded-xl p-3.5 text-center"
+                </Link>
+                <Link
+                  to="/command-center?filter=open"
+                  className="rounded-xl p-3.5 text-center block transition-opacity hover:opacity-80"
                   style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)' }}
                 >
                   <p className="text-[26px] font-bold text-[#4648d4] tabular-nums leading-none">{todayActions.length}</p>
                   <p className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold mt-2">Due Today</p>
-                </div>
+                </Link>
               </div>
             </div>
 
