@@ -6,6 +6,7 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    isExternal?: boolean;
   };
 }
 
@@ -26,10 +27,20 @@ export const authMiddleware = (
       id: string;
       email: string;
       role: string;
+      isExternal?: boolean;
     };
     req.user = decoded;
     next();
   } catch {
     res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
   }
+};
+
+/** Rejects external (password) users — for staff-only features like creating initiatives and AI generation. */
+export const staffOnly = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.user?.isExternal) {
+    res.status(403).json({ error: 'This feature is not available to external users' });
+    return;
+  }
+  next();
 };

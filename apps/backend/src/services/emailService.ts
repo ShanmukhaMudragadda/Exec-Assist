@@ -127,9 +127,18 @@ export const sendMemberAddedEmail = async (
   email: string,
   initiativeTitle: string,
   addedByName: string,
-  initiativeId: string
+  initiativeId: string,
+  setPasswordUrl?: string | null,
+  isExternal = false
 ): Promise<void> => {
-  const viewUrl = `${process.env.APP_URL}/initiatives/${initiativeId}`;
+  // External invitees without a password get a set-password link instead of a direct view link
+  const viewUrl = setPasswordUrl ?? `${process.env.APP_URL}/initiatives/${initiativeId}`;
+  const ctaLabel = setPasswordUrl ? 'Set Your Password →' : 'View Initiative →';
+  const footer = setPasswordUrl
+    ? 'This link expires in 7 days and can only be used once. If it expires, ask the person who invited you to send it again.'
+    : isExternal
+      ? 'Sign in with your email address and password to access ExecAssist.'
+      : "Sign in with Google to access ExecAssist. If you don't have an account, Google will create one automatically.";
   await sendEmail({
     to: email,
     subject: `You've been added to "${initiativeTitle}" on ExecAssist`,
@@ -146,10 +155,33 @@ export const sendMemberAddedEmail = async (
             <strong style="color:#191c1e; font-size:16px;">${initiativeTitle}</strong>
           </div>
           <a href="${viewUrl}" style="display:inline-block; background:#4648d4; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:15px; font-weight:600;">
-            View Initiative →
+            ${ctaLabel}
           </a>
         </div>
-        <p style="color:#9ca3af; font-size:12px; text-align:center; margin:0;">Sign in with Google to access ExecAssist. If you don't have an account, Google will create one automatically.</p>
+        <p style="color:#9ca3af; font-size:12px; text-align:center; margin:0;">${footer}</p>
+      </div>
+    `,
+  });
+};
+
+export const sendPasswordResetEmail = async (email: string, name: string, resetUrl: string): Promise<void> => {
+  await sendEmail({
+    to: email,
+    subject: 'Set your ExecAssist password',
+    html: `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; max-width:600px; margin:0 auto; background:#f9fafb; padding:24px;">
+        <div style="background:linear-gradient(135deg,#4648d4,#6366f1); border-radius:12px; padding:28px 32px; margin-bottom:24px; text-align:center;">
+          <h1 style="margin:0; color:#ffffff; font-size:22px; font-weight:700;">Set your password</h1>
+        </div>
+        <div style="background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:24px; margin-bottom:16px;">
+          <p style="margin:0 0 20px; color:#374151; font-size:15px;">
+            Hi ${name}, we received a request to set the password for your ExecAssist account.
+          </p>
+          <a href="${resetUrl}" style="display:inline-block; background:#4648d4; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:15px; font-weight:600;">
+            Set Password →
+          </a>
+        </div>
+        <p style="color:#9ca3af; font-size:12px; text-align:center; margin:0;">This link expires in 1 hour. If you didn't request it, you can ignore this email.</p>
       </div>
     `,
   });

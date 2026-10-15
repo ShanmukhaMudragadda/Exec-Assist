@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { OAuth2Client } from 'google-auth-library';
-import { generateToken } from '../utils/jwt';
+import { buildAuthResponse } from '../services/externalAuthService';
 import { logAudit } from '../services/auditService';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -89,6 +89,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
           googleId: googleId || user.googleId,
           avatar: picture || user.avatar,
           emailVerified: true,
+          isExternal: false, // Google sign-in is restricted to the org, so this is staff
           ...(isSuperAdminEmail && user.role !== 'superadmin' ? { role: 'superadmin' } : {}),
         },
       });
@@ -115,14 +116,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       );
     }
 
-    // Fetch feature flags for the response
-    const featureFlags = await prisma.userFeatureFlag.findMany({
-      where: { userId: user.id },
-      select: { feature: true, enabled: true },
-    });
-
     console.log('[googleAuth] user.avatar after save:', user.avatar);
-    const token = generateToken({ id: user.id, email: user.email, role: user.role });
 
     logAudit({
       userId: user.id,
@@ -133,19 +127,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       req,
     });
 
-    res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        emailVerified: user.emailVerified,
-        avatar: user.avatar,
-        pushNotificationsEnabled: user.pushNotificationsEnabled,
-        featureFlags,
-      },
-      token,
-    });
+    res.json(await buildAuthResponse(user));
   } catch (error) {
     console.error('Google auth error:', error);
     res.status(401).json({ error: 'Google authentication failed' });
@@ -162,7 +144,7 @@ export const getMe = async (
       where: { id: userId },
       select: {
         id: true, email: true, name: true, role: true, emailVerified: true,
-        avatar: true, timezone: true, createdAt: true, pushNotificationsEnabled: true,
+        avatar: true, timezone: true, createdAt: true, pushNotificationsEnabled: true, isExternal: true,
         featureFlags: { select: { feature: true, enabled: true } },
       },
     });

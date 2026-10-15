@@ -6,6 +6,7 @@ import { format, isBefore, differenceInDays, isValid } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi, actionsApi, membersApi, initiativeSettingsApi, tagsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useIsExternal } from '@/hooks/useIsExternal'
 import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin'
 import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
@@ -125,6 +126,7 @@ export default function CommandCenterPage() {
   const initiativeId = searchParams.get('initiativeId')
   const { user } = useAuthStore()
   const isSuperAdmin = useIsSuperAdmin()
+  const isExternal = useIsExternal()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const now = new Date()
@@ -265,8 +267,18 @@ export default function CommandCenterPage() {
   const { data: workspaceTagsData } = useQuery({
     queryKey: ['tags-all'],
     queryFn: () => tagsApi.listAll().then((r) => r.data?.tags || []),
+    enabled: !isExternal,
   })
   const workspaceTags: Tag[] = workspaceTagsData || []
+
+  // Members of the initiative the action being edited belongs to. Actions don't always carry the
+  // `initiative` relation (e.g. inside an initiative), so fall back to the `initiativeId` scalar.
+  const editInitiativeId = editingAction ? (editingAction.initiative?.id ?? editingAction.initiativeId ?? null) : null
+  const { data: editMembersData } = useQuery({
+    queryKey: ['initiative-members', editInitiativeId],
+    queryFn: () => membersApi.list(editInitiativeId!).then((r) => (r.data?.members || []) as Member[]),
+    enabled: !!editInitiativeId && editInitiativeId !== initiativeId,
+  })
 
 
   const initiative: Initiative | null = (initData as any)?.initiative || null
@@ -996,17 +1008,19 @@ export default function CommandCenterPage() {
                 {/* Split Add Action button */}
                 <div ref={dropdownRef} className="relative flex">
                   <button onClick={() => setShowAddAction(true)}
-                    className="px-3 py-2 bg-[#4648d4] text-white text-xs font-bold rounded-l-lg flex items-center gap-1.5 hover:bg-[#3730a3] transition-colors border-r border-[#3730a3]"
+                    className={cn('px-3 py-2 bg-[#4648d4] text-white text-xs font-bold flex items-center gap-1.5 hover:bg-[#3730a3] transition-colors', isExternal ? 'rounded-lg' : 'rounded-l-lg border-r border-[#3730a3]')}
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
                     Add Action
                   </button>
+                  {!isExternal && (
                   <button onClick={() => setShowUploadDropdown((v) => !v)}
                     className="px-1.5 py-2 bg-[#4648d4] text-white rounded-r-lg hover:bg-[#3730a3] transition-colors"
                   >
                     <span className="material-symbols-outlined text-[18px]">arrow_drop_down</span>
                   </button>
-                  {showUploadDropdown && (
+                  )}
+                  {showUploadDropdown && !isExternal && (
                     <div className="absolute top-full right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-[#f0f0f0] z-50 overflow-hidden">
                       {[
                         { label: 'Upload from Sheets', icon: 'table_chart', mode: 'sheets' },
@@ -1030,6 +1044,7 @@ export default function CommandCenterPage() {
           <div className="bg-white border-b border-[#f0f0f0] px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <h1 className="text-[16px] font-bold text-[#111827] tracking-tight">Command Center</h1>
+              {!isExternal && (
               <div ref={dropdownRef} className="relative flex shrink-0">
                 <button onClick={() => setShowAddAction(true)}
                   className="px-3 py-2 bg-[#4648d4] text-white text-[13px] font-bold rounded-l-lg flex items-center gap-1.5 hover:bg-[#3730a3] transition-colors border-r border-[#3730a3]"
@@ -1059,6 +1074,7 @@ export default function CommandCenterPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
         )}
@@ -1648,13 +1664,20 @@ export default function CommandCenterPage() {
                 </div>
                 {/* Assignees (multi-select) */}
                 {(() => {
-                  const initData2 = editingAction.initiative?.id === initiativeId ? initiative : null
+                  const initData2 = initiative && editInitiativeId === initiativeId ? initiative : null
                   let assigneeList: { id: string; name: string; avatar?: string | null }[] = []
                   if (initData2) {
                     assigneeList = [
                       { id: initData2.creator.id, name: initData2.creator.name, avatar: initData2.creator.avatar || null },
                       ...initData2.members.filter((m) => m.userId !== initData2.creator.id).map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null })),
                     ]
+                  } else if (editInitiativeId && editMembersData) {
+                    // Action from another initiative (Command Center view) — use that initiative's members
+                    assigneeList = editMembersData.map((m) => ({ id: m.userId, name: m.user?.name || '', avatar: m.user?.avatar || null }))
+                    // Keep anyone already assigned visible, even if they've since left the initiative
+                    editingAction.assignees?.forEach((aa) => {
+                      if (!assigneeList.some((a) => a.id === aa.user.id)) assigneeList.push({ id: aa.user.id, name: aa.user.name || '', avatar: aa.user.avatar || null })
+                    })
                   } else {
                     // CC mode: build from reliable sources already on the action
                     const seen = new Map<string, { name: string; avatar?: string | null }>()

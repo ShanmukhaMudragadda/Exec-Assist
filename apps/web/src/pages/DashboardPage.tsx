@@ -5,6 +5,7 @@ import { format, isBefore, isToday, differenceInDays } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi, actionsApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useIsExternal } from '@/hooks/useIsExternal'
 import { cn } from '@/lib/utils'
 
 // Helper function to get greeting
@@ -37,6 +38,7 @@ const LS_BRIEF_DATE_KEY = 'executiveBriefFetchDate';
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
+  const isExternal = useIsExternal()
   const navigate = useNavigate()
   const now = new Date()
   const todayString = now.toDateString(); // Consistent date string for comparison
@@ -66,6 +68,7 @@ export default function DashboardPage() {
     },
     staleTime: Infinity,
     gcTime: Infinity,
+    enabled: !isExternal,
   });
 
   const refetchBrief = () => {
@@ -146,7 +149,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Executive Brief — newspaper editorial */}
+        {/* Executive Brief — newspaper editorial (staff only) */}
+        {!isExternal && (
         <div className="mb-5 overflow-hidden" style={{ background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,0.07)' }}>
           {/* Masthead */}
           <div className="flex items-center justify-between px-4 py-3">
@@ -239,6 +243,7 @@ export default function DashboardPage() {
           {/* Footer rule */}
           <div className="mx-6 mb-4" style={{ borderTop: '1px solid #e2e8f0' }} />
         </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
           {/* LEFT */}

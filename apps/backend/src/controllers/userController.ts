@@ -39,6 +39,11 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 
 export const getUserById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // External users may only look themselves up (this returns email addresses)
+    if (req.user?.isExternal && req.params.id !== req.user.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
       select: { id: true, name: true, email: true, avatar: true, role: true },

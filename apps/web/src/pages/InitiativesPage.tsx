@@ -5,6 +5,7 @@ import { format, isBefore, differenceInDays } from 'date-fns'
 import AppLayout from '@/components/layout/AppLayout'
 import { initiativesApi } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useIsExternal } from '@/hooks/useIsExternal'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 
@@ -42,6 +43,7 @@ function ProgressBar({ pct, color = '#4648d4' }: { pct: number; color?: string }
 
 export default function InitiativesPage() {
   const { user } = useAuthStore()
+  const isExternal = useIsExternal()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -139,13 +141,15 @@ export default function InitiativesPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="bg-[#4648d4] hover:bg-[#3730a3] active:bg-[#312e81] text-white px-3.5 py-2.5 rounded-lg font-semibold text-[13px] flex items-center gap-1.5 transition-colors duration-150 shrink-0 min-h-[44px]"
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              New Initiative
-            </button>
+            {!isExternal && (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="bg-[#4648d4] hover:bg-[#3730a3] active:bg-[#312e81] text-white px-3.5 py-2.5 rounded-lg font-semibold text-[13px] flex items-center gap-1.5 transition-colors duration-150 shrink-0 min-h-[44px]"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                New Initiative
+              </button>
+            )}
           </div>
         </div>
 
@@ -196,7 +200,7 @@ export default function InitiativesPage() {
                 <p className="text-[14px] font-medium text-[#9ca3af]">
                   {search ? 'No results found' : 'No initiatives yet'}
                 </p>
-                {!search && (
+                {!search && !isExternal && (
                   <button
                     onClick={() => setShowCreate(true)}
                     className="mt-4 text-[13px] font-semibold text-[#4648d4] hover:opacity-70 transition-opacity"

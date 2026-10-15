@@ -50,6 +50,9 @@ const io = new Server(httpServer, {
   },
 });
 
+// Behind nginx — use X-Forwarded-For for client IPs (rate limiting, audit logs)
+app.set('trust proxy', 1);
+
 // Make io available to routes
 app.set('io', io);
 

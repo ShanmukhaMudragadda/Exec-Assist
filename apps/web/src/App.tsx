@@ -5,7 +5,10 @@ import { authApi, usersApi } from './services/api'
 import { useSessionGuard } from './hooks/useSessionGuard'
 import { useIsSuperAdmin } from './hooks/useIsSuperAdmin'
 import { useFeatureFlag } from './hooks/useFeatureFlag'
+import { useIsExternal } from './hooks/useIsExternal'
 import LoginPage from './pages/auth/LoginPage'
+import SetPasswordPage from './pages/auth/SetPasswordPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
 import InitiativesPage from './pages/InitiativesPage'
@@ -52,6 +55,13 @@ function FeatureFlagRoute({ feature, children }: { feature: string; children: Re
   return <>{children}</>
 }
 
+/** Staff-only pages (e.g. AI upload) — external users are sent to the dashboard */
+function StaffRoute({ children }: { children: React.ReactNode }) {
+  const isExternal = useIsExternal()
+  if (isExternal) return <Navigate to="/dashboard" replace />
+  return <PrivateRoute>{children}</PrivateRoute>
+}
+
 function TimezoneSync() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const setUser = useAuthStore((s) => s.setUser)
@@ -78,6 +88,8 @@ export default function App() {
       <SessionGuard />
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
+        <Route path="/auth/set-password" element={<SetPasswordPage />} />
+        <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
 
         {/* Root → dashboard */}
         <Route path="/" element={<PrivateRoute><Navigate to="/dashboard" replace /></PrivateRoute>} />
@@ -95,7 +107,7 @@ export default function App() {
         <Route path="/command-center" element={<PrivateRoute><CommandCenterPage /></PrivateRoute>} />
 
         {/* Upload Data */}
-        <Route path="/upload" element={<PrivateRoute><UploadDataPage /></PrivateRoute>} />
+        <Route path="/upload" element={<StaffRoute><UploadDataPage /></StaffRoute>} />
 
         {/* Profile */}
         <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />

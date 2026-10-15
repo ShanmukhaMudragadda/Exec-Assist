@@ -10,6 +10,7 @@ interface User {
   avatar?: string | null
   emailNotifications: boolean
   pushNotificationsEnabled?: boolean
+  isExternal?: boolean
   dailyReportTime?: string | null
   featureFlags?: { feature: string; enabled: boolean }[]
 }

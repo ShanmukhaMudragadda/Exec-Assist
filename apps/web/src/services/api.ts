@@ -24,7 +24,7 @@ api.interceptors.response.use(
     const isExpiredToken =
       status === 401 ||
       (status === 403 && error.response?.data?.error?.toLowerCase?.().includes('expired'))
-    if (isExpiredToken) {
+    if (isExpiredToken && !error.config?.url?.startsWith('/auth/password/')) {
       // Clear both localStorage and Zustand state
       localStorage.removeItem('token')
       useAuthStore.getState().logout()
@@ -41,6 +41,15 @@ export const authApi = {
   googleLogin: (credential: string) =>
     api.post('/auth/google', { credential }),
   me: () => api.get('/auth/me'),
+  // Password sign-in — external users only
+  passwordLogin: (email: string, password: string) =>
+    api.post('/auth/password/login', { email, password }),
+  verifyPasswordToken: (token: string) =>
+    api.post<{ email: string; name: string; hasPassword: boolean }>('/auth/password/verify-token', { token }),
+  setPassword: (token: string, password: string, name?: string) =>
+    api.post('/auth/password/set', { token, password, ...(name ? { name } : {}) }),
+  forgotPassword: (email: string) =>
+    api.post<{ message: string }>('/auth/password/forgot', { email }),
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────

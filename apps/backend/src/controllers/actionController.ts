@@ -8,6 +8,7 @@ import { sendMentionNotificationEmail } from '../services/emailService';
 import { queueActionAssignmentEmail } from '../queue/emailQueue';
 import { sendPushNotification } from '../services/pushService';
 import { logAudit } from '../services/auditService';
+import { ensureInvitedUser } from '../services/externalAuthService';
 
 /** Extract unique userIds from @[Name](userId) mention tokens */
 function parseMentionIds(content: string): string[] {
@@ -100,12 +101,7 @@ async function processInviteEmails(emails: string[], actionId: string, initiativ
   const initiativeTitle = initiative?.title ?? 'an initiative';
 
   for (const email of emails) {
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    const targetUser = existingUser ?? await prisma.user.upsert({
-      where: { email },
-      update: {},
-      create: { email, name: email.split('@')[0], emailVerified: false },
-    });
+    const { user: targetUser, existed, setPasswordUrl } = await ensureInvitedUser(email);
 
     // Add to initiative as 'member'; don't overwrite an existing higher role
     await (prisma.initiativeMember as any).upsert({
@@ -121,11 +117,11 @@ async function processInviteEmails(emails: string[], actionId: string, initiativ
       create: { actionId, userId: targetUser.id },
     });
 
-    sendMemberAddedEmail(email, initiativeTitle, inviterName, initiativeId)
+    sendMemberAddedEmail(targetUser.email, initiativeTitle, inviterName, initiativeId, setPasswordUrl, targetUser.isExternal)
       .catch((err: unknown) => console.error('[invite] member added email failed:', err));
 
-    if (existingUser?.pushNotificationsEnabled) {
-      sendPushNotification(existingUser.id, {
+    if (existed && targetUser.pushNotificationsEnabled) {
+      sendPushNotification(targetUser.id, {
         title: 'Added to Initiative',
         body: `${inviterName} added you to "${initiativeTitle}"`,
         url: `/initiatives/${initiativeId}`,
@@ -210,6 +206,10 @@ export const createAction = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.id;
     const data = createSchema.parse(req.body);
     const initiativeId = paramInitiativeId || data.initiativeId || null;
+
+    if (req.user?.isExternal && (!initiativeId || data.inviteEmails?.length)) {
+      return res.status(403).json({ error: 'This feature is not available to external users' });
+    }
 
     if (initiativeId && !(await canAccess(userId, initiativeId, req.user?.role)).ok) {
       return res.status(403).json({ error: 'Access denied' });
@@ -397,6 +397,10 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
     let accessibleIds: string[];
     if (isSuperAdmin(req)) {
       accessibleIds = actions.map((a) => a.id);
+    } else if (req.user?.isExternal) {
+      accessibleIds = actions
+        .filter((a) => a.assignees.some((aa) => aa.userId === userId) || a.createdBy === userId)
+        .map((a) => a.id);
     } else {
       const userInitiatives = await prisma.initiative.findMany({
         where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
@@ -414,6 +418,9 @@ export const bulkUpdateActions = async (req: AuthRequest, res: Response) => {
     }
 
     if (accessibleIds.length === 0) return res.status(403).json({ error: 'Access denied' });
+    if (req.user?.isExternal && 'initiativeId' in update) {
+      return res.status(403).json({ error: 'This feature is not available to external users' });
+    }
 
     // If moving to a new initiative, verify the user has access to it
     if (update.initiativeId) {
@@ -476,6 +483,10 @@ export const bulkDeleteActions = async (req: AuthRequest, res: Response) => {
     let accessibleIds: string[];
     if (isSuperAdmin(req)) {
       accessibleIds = actions.map((a) => a.id);
+    } else if (req.user?.isExternal) {
+      accessibleIds = actions
+        .filter((a) => a.assignees.some((aa) => aa.userId === userId) || a.createdBy === userId)
+        .map((a) => a.id);
     } else {
       const userInitiatives = await prisma.initiative.findMany({
         where: { OR: [{ createdBy: userId }, { members: { some: { userId } } }] },
@@ -528,6 +539,10 @@ export const updateAction = async (req: AuthRequest, res: Response) => {
     const { ok, canModify } = await canAccessAction(userId, action, req.user?.role);
     if (!ok || !canModify) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (req.user?.isExternal && (data.inviteEmails?.length || (data.initiativeId !== undefined && data.initiativeId !== action.initiativeId))) {
+      return res.status(403).json({ error: 'This feature is not available to external users' });
     }
 
     // If moving to a new initiative, verify access to the target initiative

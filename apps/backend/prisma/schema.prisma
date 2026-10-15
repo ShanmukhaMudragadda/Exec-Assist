@@ -19,6 +19,13 @@ model User {
   emailVerified       Boolean   @default(false)
   timezone                 String?   @default("UTC")
   pushNotificationsEnabled Boolean   @default(true)
+  // Password sign-in — external (non-staff) users only; staff sign in with Google
+  isExternal               Boolean   @default(false)
+  passwordHash             String?
+  passwordTokenHash        String?   @unique // sha256 of the set/reset-password link token
+  passwordTokenExpiry      DateTime?
+  failedLoginAttempts      Int       @default(0)
+  lockedUntil              DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 

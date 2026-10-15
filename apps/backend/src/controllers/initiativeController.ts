@@ -7,6 +7,7 @@ import { sendPushNotification } from '../services/pushService';
 import { logAudit } from '../services/auditService';
 import { sendInitiativeDailyDigest } from '../queue/emailQueue';
 import { sendOverdueNotificationEmail } from '../services/emailService';
+import { ensureInvitedUser } from '../services/externalAuthService';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +30,11 @@ async function canAccess(userId: string, initiativeId: string, callerRole?: stri
 // owner or admin can edit
 function canEdit(role: string | null) {
   return role === 'owner' || role === 'admin';
+}
+
+// External users see names and avatars of other members, but not their email addresses
+function hideMemberEmails<T extends { user: { email?: string } }>(members: T[], viewerId: string): T[] {
+  return members.map((m) => (m.user as { id?: string }).id === viewerId ? m : { ...m, user: { ...m.user, email: undefined } });
 }
 
 // ── initiative CRUD ───────────────────────────────────────────────────────────
@@ -211,12 +217,15 @@ export const getInitiative = async (req: AuthRequest, res: Response) => {
 
     const computedProgress = actionsTotal > 0 ? Math.round((completedCount / actionsTotal) * 100) : initiative.progress;
 
+    const external = !!req.user?.isExternal;
+
     return res.json({
       initiative: {
         ...initiative,
+        ...(external ? { members: hideMemberEmails(initiative.members, userId) } : {}),
         actions,
         progress: computedProgress,
-        pending,
+        pending: external ? [] : pending,
         actionsMeta: {
           total: actionsTotal, hasMore, nextCursor,
           open: openCount, overdue: overdueCount, completed: completedCount,
@@ -431,7 +440,7 @@ export const listMembers = async (req: AuthRequest, res: Response) => {
       where: { initiativeId },
       include: { user: { select: { id: true, name: true, email: true, avatar: true, emailVerified: true } } },
     });
-    return res.json({ members, pending: [] });
+    return res.json({ members: req.user?.isExternal ? hideMemberEmails(members, userId) : members, pending: [] });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -452,6 +461,11 @@ export const updateMember = async (req: AuthRequest, res: Response) => {
       department: z.string().optional().nullable(),
     });
     const data = updateSchema.parse(req.body);
+
+    if (data.role && data.role !== 'member') {
+      const target = await prisma.user.findUnique({ where: { id: memberId }, select: { isExternal: true } });
+      if (target?.isExternal) return res.status(400).json({ error: 'External users can only have the member role' });
+    }
 
     const updated = await prisma.initiativeMember.update({
       where: { userId_initiativeId: { userId: memberId, initiativeId } },
@@ -541,39 +555,30 @@ export const addMember = async (req: AuthRequest, res: Response) => {
 
     const { sendMemberAddedEmail } = await import('../services/emailService');
 
-    // Check if the user already has an account
-    const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
-
     const initiativeTitle = init?.title ?? 'an initiative';
     const inviter = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
     const inviterName = inviter?.name || 'A teammate';
 
-    // If user doesn't have an account yet, create a stub user so they can be
-    // added directly (no invitation/acceptance required). When they sign in with
-    // Google the auth flow will update the stub with their real name/avatar.
-    const targetUser = existingUser ?? await prisma.user.upsert({
-      where: { email: data.email },
-      update: {},   // already exists as stub — don't overwrite anything
-      create: {
-        email: data.email,
-        name: data.email.split('@')[0],   // placeholder name until they log in
-        emailVerified: false,
-      },
-    });
+    // Finds the user or creates a placeholder so they can be added directly (no acceptance step).
+    // Staff fill in their profile on first Google sign-in; external users get a set-password link.
+    const { user: targetUser, existed, setPasswordUrl } = await ensureInvitedUser(data.email);
+
+    // External users can only ever be 'member' (they see only the actions assigned to them)
+    const memberRole = targetUser.isExternal ? 'member' : (data.role ?? 'member');
 
     const member = await (prisma.initiativeMember as any).upsert({
       where: { userId_initiativeId: { userId: targetUser.id, initiativeId } },
-      update: { role: data.role ?? 'member', department: data.department ?? null },
-      create: { userId: targetUser.id, initiativeId, role: data.role ?? 'member', department: data.department ?? null },
+      update: { role: memberRole, department: data.department ?? null },
+      create: { userId: targetUser.id, initiativeId, role: memberRole, department: data.department ?? null },
       include: { user: { select: { id: true, name: true, email: true, avatar: true } } },
     });
 
-    sendMemberAddedEmail(data.email, initiativeTitle, inviterName, initiativeId)
+    sendMemberAddedEmail(targetUser.email, initiativeTitle, inviterName, initiativeId, setPasswordUrl, targetUser.isExternal)
       .catch((err: unknown) => console.error('Member added email failed:', err));
 
     // Push notification only if they have an active account with push enabled
-    if (existingUser?.pushNotificationsEnabled) {
-      sendPushNotification(existingUser.id, {
+    if (existed && targetUser.pushNotificationsEnabled) {
+      sendPushNotification(targetUser.id, {
         title: 'Added to Initiative',
         body: `${inviterName} added you to "${initiativeTitle}"`,
         url: `/initiatives/${initiativeId}`,
@@ -587,7 +592,7 @@ export const addMember = async (req: AuthRequest, res: Response) => {
       entityType: 'initiative',
       entityId: initiativeId,
       entityTitle: initiativeTitle,
-      metadata: { email: data.email, role: data.role, stubUser: !existingUser },
+      metadata: { email: data.email, role: memberRole, stubUser: !existed, external: targetUser.isExternal },
       req,
     });
 

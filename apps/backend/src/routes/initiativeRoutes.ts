@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, staffOnly } from '../middleware/auth';
 import {
   createInitiative,
   listInitiatives,
@@ -40,10 +40,10 @@ const router = Router();
 
 // ── command center ──────────────────────────────────────────────────────────
 router.get('/command-center', authMiddleware, getCommandCenter);
-router.get('/executive-brief', authMiddleware, getExecutiveBrief);
+router.get('/executive-brief', authMiddleware, staffOnly, getExecutiveBrief);
 
 // ── initiatives ─────────────────────────────────────────────────────────────
-router.post('/initiatives', authMiddleware, createInitiative);
+router.post('/initiatives', authMiddleware, staffOnly, createInitiative);
 router.get('/initiatives', authMiddleware, listInitiatives);
 router.get('/initiatives/:initiativeId', authMiddleware, getInitiative);
 router.patch('/initiatives/:initiativeId', authMiddleware, updateInitiative);
@@ -62,8 +62,8 @@ router.get('/initiatives/:initiativeId/settings', authMiddleware, getSettings);
 router.patch('/initiatives/:initiativeId/settings', authMiddleware, updateSettings);
 
 // ── tags ─────────────────────────────────────────────────────────────────────
-router.get('/tags', authMiddleware, listAllTags);                                    // workspace-level (global)
-router.post('/tags', authMiddleware, createGlobalTag);                              // create global tag
+router.get('/tags', authMiddleware, staffOnly, listAllTags);                                    // workspace-level (global)
+router.post('/tags', authMiddleware, staffOnly, createGlobalTag);                              // create global tag
 router.get('/initiatives/:initiativeId/tags', authMiddleware, listTags);
 router.post('/initiatives/:initiativeId/tags', authMiddleware, createTag);
 router.delete('/initiatives/:initiativeId/tags/:tagId', authMiddleware, deleteTag);
@@ -71,12 +71,12 @@ router.post('/initiatives/:initiativeId/notify-overdue', authMiddleware, notifyO
 
 // ── actions ─────────────────────────────────────────────────────────────────
 router.get('/initiatives/:initiativeId/actions', authMiddleware, listActions);
-router.post('/actions', authMiddleware, createAction);                           // standalone (no initiative)
-router.post('/actions/generate', authMiddleware, generateStandaloneActions);
-router.post('/actions/generate-sheet', authMiddleware, generateActionsFromSheet);
+router.post('/actions', authMiddleware, staffOnly, createAction);                           // standalone (no initiative)
+router.post('/actions/generate', authMiddleware, staffOnly, generateStandaloneActions);
+router.post('/actions/generate-sheet', authMiddleware, staffOnly, generateActionsFromSheet);
 router.post('/initiatives/:initiativeId/actions', authMiddleware, createAction);
-router.post('/initiatives/:initiativeId/actions/bulk', authMiddleware, bulkCreateActions);
-router.post('/initiatives/:initiativeId/actions/generate', authMiddleware, generateActionsFromTranscript);
+router.post('/initiatives/:initiativeId/actions/bulk', authMiddleware, staffOnly, bulkCreateActions);
+router.post('/initiatives/:initiativeId/actions/generate', authMiddleware, staffOnly, generateActionsFromTranscript);
 router.patch('/actions/bulk', authMiddleware, bulkUpdateActions);
 router.delete('/actions/bulk', authMiddleware, bulkDeleteActions);
 router.get('/actions/:actionId', authMiddleware, getAction);

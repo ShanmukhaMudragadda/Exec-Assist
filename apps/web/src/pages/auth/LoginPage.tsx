@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { authApi } from '@/services/api'
 
@@ -13,6 +13,10 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams()
   const { setAuth, isAuthenticated } = useAuthStore()
   const [error, setError] = useState('')
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const redirect = searchParams.get('redirect') || '/dashboard'
   const reason   = searchParams.get('reason') || ''
@@ -57,6 +61,22 @@ export default function LoginPage() {
       const msg = err?.response?.data?.error || err?.message || 'Unknown error'
       console.error('[Google Login] failed:', msg, err)
       setError(`Google sign-in failed: ${msg}`)
+    }
+  }
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      const res = await authApi.passwordLogin(email.trim(), password)
+      const { token, user } = res.data
+      setAuth(user, token)
+      navigate(redirect, { replace: true })
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Sign-in failed. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -123,6 +143,57 @@ export default function LoginPage() {
 
           {/* Google Sign-In button rendered by Google SDK */}
           <div id="google-signin-btn" className="mb-4" />
+
+          {/* Email + password — external users only */}
+          <div className="w-full flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">External users</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {!showPasswordForm ? (
+            <button
+              type="button"
+              onClick={() => setShowPasswordForm(true)}
+              className="w-[320px] max-w-full h-10 border border-slate-300 rounded text-[14px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Sign in with email
+            </button>
+          ) : (
+            <form onSubmit={handlePasswordLogin} className="w-[320px] max-w-full space-y-3">
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                autoFocus
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full h-10 px-3 border border-slate-300 rounded text-[14px] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/20 focus:border-[#4648d4]"
+              />
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full h-10 px-3 border border-slate-300 rounded text-[14px] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/20 focus:border-[#4648d4]"
+              />
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full h-10 bg-[#4648d4] hover:bg-[#3730a3] disabled:opacity-60 text-white rounded text-[14px] font-semibold transition-colors"
+              >
+                {submitting ? 'Signing in…' : 'Sign in'}
+              </button>
+              <div className="text-center">
+                <Link to="/auth/forgot-password" className="text-[12px] text-[#4648d4] font-medium hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+            </form>
+          )}
 
           <p className="text-[11px] text-slate-400 max-w-[280px] mx-auto leading-relaxed text-center mt-6">
             By signing in, you agree to our{' '}

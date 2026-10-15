@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, staffOnly } from '../middleware/auth';
 import { requireSuperAdmin } from '../middleware/superAdmin';
 import { listUsers, updateUserFeature, getAdminStats, getEltSummary, getEltUserWorkload } from '../controllers/adminController';
 
@@ -11,7 +11,7 @@ router.patch('/admin/users/:userId/features', authMiddleware, requireSuperAdmin,
 router.get('/admin/stats', authMiddleware, requireSuperAdmin, getAdminStats);
 
 // ELT — accessible to super-admin or users with elt_dashboard flag (checked inside controllers)
-router.get('/elt/summary', authMiddleware, getEltSummary);
-router.get('/elt/workload/:userId', authMiddleware, getEltUserWorkload);
+router.get('/elt/summary', authMiddleware, staffOnly, getEltSummary);
+router.get('/elt/workload/:userId', authMiddleware, staffOnly, getEltUserWorkload);
 
 export default router;

@@ -129,12 +129,13 @@ export const mcpCallback = async (req: Request, res: Response) => {
           googleId: googleId ?? user.googleId,
           avatar: picture ?? user.avatar,
           emailVerified: true,
+          isExternal: false, // Google sign-in is restricted to the org, so this is staff
           ...(isSuperAdminEmail && user.role !== 'superadmin' ? { role: 'superadmin' } : {}),
         },
       });
     }
 
-    const accessToken = generateToken({ id: user.id, email: user.email, role: user.role });
+    const accessToken = generateToken({ id: user.id, email: user.email, role: user.role, isExternal: user.isExternal });
     const refreshTokenStr = issueRefreshToken();
     const expiresAt = await storeRefreshToken(user.id, refreshTokenStr);
 
@@ -212,7 +213,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
 
     const newRefreshToken = issueRefreshToken();
     const expiresAt = await storeRefreshToken(stored.userId, newRefreshToken);
-    const accessToken = generateToken({ id: stored.user.id, email: stored.user.email, role: stored.user.role });
+    const accessToken = generateToken({ id: stored.user.id, email: stored.user.email, role: stored.user.role, isExternal: stored.user.isExternal });
 
     res.json({ token: accessToken, refreshToken: newRefreshToken, expiresAt: expiresAt.toISOString() });
   } catch (err) {
